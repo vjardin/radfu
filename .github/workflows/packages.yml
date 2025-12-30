@@ -80,3 +80,64 @@ jobs:
         with:
           name: rpm-fedora
           path: "*.rpm"
+
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [deb-debian, deb-ubuntu, rpm-fedora]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Prepare release assets
+        run: |
+          mv deb-debian/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-debian.deb
+          mv deb-ubuntu/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-ubuntu.deb
+          mv rpm-fedora/radfu-*.x86_64.rpm .
+          ls -la *.deb *.rpm
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: false
+          body: |
+            Release ${{ github.ref_name }} of RADFU - Renesas RA Device Firmware Update tool.
+
+            A flash programming tool for Renesas RA microcontroller series that communicates with the built-in ROM bootloader via USB or UART/SCI interfaces.
+
+            ## Features
+
+            - Read/write/erase flash memory
+            - Query device information
+            - ID authentication for protected devices
+            - Auto-detect Renesas USB devices
+            - Configurable UART baud rate
+
+            ## Supported Devices
+
+            - RA4 Series (Cortex-M4/M23) - tested
+            - RA2 Series (Cortex-M23)
+            - RA6 Series (Cortex-M33)
+
+            ## Installation
+
+            Debian 12 (Bookworm):
+
+                wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu_${{ github.ref_name }}_amd64-debian.deb
+                sudo dpkg -i radfu_${{ github.ref_name }}_amd64-debian.deb
+
+            Ubuntu 24.04:
+
+                wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu_${{ github.ref_name }}_amd64-ubuntu.deb
+                sudo dpkg -i radfu_${{ github.ref_name }}_amd64-ubuntu.deb
+
+            Fedora:
+
+                sudo dnf install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-*.rpm
+          files: |
+            *.deb
+            *.rpm
