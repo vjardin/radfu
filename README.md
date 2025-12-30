@@ -100,6 +100,73 @@ Note: USB communication is not affected by baud rate settings.
 - RA2 Series - Cortex-M23 (should work)
 - RA6 Series - Cortex-M33 (should work, accepts 0xC6 boot code)
 
+## DFU Mode on EK-RA4M2
+
+The RA4M2 has a factory-programmed ROM bootloader that supports USB DFU programming,
+independent of any user application.
+
+### Hardware Configuration
+
+The **MD pin (P201)** controls the boot mode. On the EK-RA4M2 board, **jumper J16**
+controls this pin:
+
+| J16 State | Mode | Description |
+|-----------|------|-------------|
+| Open (default) | Single-Chip Mode | Normal operation, runs user code |
+| Jumper installed | SCI/USB Boot Mode | ROM bootloader active |
+
+### Entering DFU Mode
+
+1. Install jumper on J16 (shorts P201/MD to GND)
+2. Connect USB cable to Device USB port (J11) - not the Debug USB
+3. Press RESET button
+4. MCU enters ROM bootloader
+
+### Programming with radfu
+
+```sh
+# Get device info
+radfu info
+
+# Erase flash
+radfu erase
+
+# Write firmware at address 0x0 with verification
+radfu write -a 0x0 -v firmware.bin
+
+# Read flash to file
+radfu read -a 0x0 -s 0x80000 dump.bin
+```
+
+### Returning to Normal Mode
+
+1. Remove jumper from J16
+2. Press RESET button
+3. MCU runs your application
+
+### Linux USB Permissions
+
+If the device is not detected, create a udev rule:
+
+```sh
+sudo tee /etc/udev/rules.d/99-renesas-dfu.rules << 'EOF'
+# Renesas RA USB Boot Mode
+SUBSYSTEM=="usb", ATTR{idVendor}=="045b", MODE="0666"
+EOF
+sudo udevadm control --reload-rules
+```
+
+Check device detection:
+
+```sh
+lsusb | grep -i renesas
+ls /dev/ttyACM*
+```
+
+### Board Documentation
+
+- [EK-RA4M2 v1 User's Manual](https://www.renesas.com/en/document/man/ek-ra4m2-v1-users-manual) - See page 28 for J16 jumper details
+
 ## Documentation Sources
 
 This implementation is based on the official Renesas documentation:
