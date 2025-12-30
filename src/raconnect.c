@@ -11,16 +11,17 @@
 #include "raconnect.h"
 #include "rapacker.h"
 
+#include <dirent.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <dirent.h>
 
 #define GENERIC_CODE 0x55
 #define BOOT_CODE 0xC3
@@ -121,8 +122,8 @@ static int
 find_port(char *buf, size_t len, char *tty_name, size_t tty_len) {
   DIR *dir;
   struct dirent *ent;
-  char path[256];
-  char vid_path[512];
+  char path[PATH_MAX];
+  char vid_path[PATH_MAX];
   char vid_str[16];
   FILE *f;
 
