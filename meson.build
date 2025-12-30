@@ -11,13 +11,28 @@ src = files(
   'src/progress.c',
 )
 
-if get_option('static')
-  radfu_exe = executable('radfu', src,
-    link_args : ['-static'],
-    install : true)
+# Platform-specific source files
+if host_machine.system() == 'darwin'
+  src += files('src/port_macos.c')
 else
-  radfu_exe = executable('radfu', src, install : true)
+  src += files('src/port_linux.c')
 endif
+
+# Platform-specific dependencies
+deps = []
+link_args = []
+
+if host_machine.system() == 'darwin'
+  # macOS requires IOKit and CoreFoundation for USB device detection
+  deps += dependency('appleframeworks', modules : ['IOKit', 'CoreFoundation'])
+elif get_option('static')
+  link_args += '-static'
+endif
+
+radfu_exe = executable('radfu', src,
+  dependencies : deps,
+  link_args : link_args,
+  install : true)
 
 # Man page generation with help2man
 help2man = find_program('help2man', required : false)

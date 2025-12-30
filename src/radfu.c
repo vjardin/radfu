@@ -15,6 +15,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -448,7 +449,11 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   close(fd);
 
   if (verify) {
-    char tmpfile[] = "/tmp/radfu_verify_XXXXXX";
+    const char *tmpdir = getenv("TMPDIR");
+    if (tmpdir == NULL)
+      tmpdir = "/tmp";
+    char tmpfile[PATH_MAX];
+    snprintf(tmpfile, sizeof(tmpfile), "%s/radfu_verify_XXXXXX", tmpdir);
     int tmpfd = mkstemp(tmpfile);
     if (tmpfd < 0) {
       warn("failed to create temp file for verify");

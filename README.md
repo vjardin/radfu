@@ -91,8 +91,8 @@ Note: USB communication is not affected by baud rate settings.
 ## Supported Platforms
 
 - Linux (tested)
+- macOS (supported)
 - Windows (not yet supported)
-- macOS (not yet supported)
 
 ## Supported Devices
 

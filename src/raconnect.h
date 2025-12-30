@@ -74,4 +74,10 @@ ssize_t ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms);
  */
 int ra_set_baudrate(ra_device_t *dev, uint32_t baudrate);
 
+/*
+ * Platform-specific port detection (implemented in port_linux.c / port_macos.c)
+ */
+int ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len);
+void ra_print_usb_info(const char *tty_name);
+
 #endif /* RACONNECT_H */

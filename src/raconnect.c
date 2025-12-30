@@ -11,11 +11,9 @@
 #include "raconnect.h"
 #include "rapacker.h"
 
-#include <dirent.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,99 +71,6 @@ set_serial_attrs(int fd, speed_t speed) {
   return 0;
 }
 
-static int
-read_sysfs_str(const char *path, char *buf, size_t len) {
-  FILE *f = fopen(path, "r");
-  if (f == NULL)
-    return -1;
-  if (fgets(buf, len, f) == NULL) {
-    fclose(f);
-    return -1;
-  }
-  fclose(f);
-  /* Remove trailing newline */
-  size_t slen = strlen(buf);
-  if (slen > 0 && buf[slen - 1] == '\n')
-    buf[slen - 1] = '\0';
-  return 0;
-}
-
-static void
-print_usb_info(const char *tty_name) {
-  char path[512];
-  char vid[16], pid[16], manufacturer[128], product[128], serial[64];
-
-  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../idVendor", tty_name);
-  if (read_sysfs_str(path, vid, sizeof(vid)) < 0)
-    strcpy(vid, "????");
-
-  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../idProduct", tty_name);
-  if (read_sysfs_str(path, pid, sizeof(pid)) < 0)
-    strcpy(pid, "????");
-
-  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../manufacturer", tty_name);
-  if (read_sysfs_str(path, manufacturer, sizeof(manufacturer)) < 0)
-    strcpy(manufacturer, "Unknown");
-
-  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../product", tty_name);
-  if (read_sysfs_str(path, product, sizeof(product)) < 0)
-    strcpy(product, "Unknown");
-
-  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../serial", tty_name);
-  if (read_sysfs_str(path, serial, sizeof(serial)) < 0)
-    strcpy(serial, "N/A");
-
-  fprintf(stderr, "USB device: %s %s [%s:%s] serial=%s\n", manufacturer, product, vid, pid, serial);
-  fprintf(stderr, "TTY port:   /dev/%s\n", tty_name);
-}
-
-static int
-find_port(char *buf, size_t len, char *tty_name, size_t tty_len) {
-  DIR *dir;
-  struct dirent *ent;
-  char path[PATH_MAX];
-  char vid_path[PATH_MAX];
-  char vid_str[16];
-  FILE *f;
-
-  dir = opendir("/sys/class/tty");
-  if (dir == NULL)
-    return -1;
-
-  while ((ent = readdir(dir)) != NULL) {
-    if (strncmp(ent->d_name, "ttyACM", 6) != 0 && strncmp(ent->d_name, "ttyUSB", 6) != 0)
-      continue;
-
-    snprintf(vid_path, sizeof(vid_path), "/sys/class/tty/%s/device/../idVendor", ent->d_name);
-    f = fopen(vid_path, "r");
-    if (f == NULL)
-      continue;
-
-    if (fgets(vid_str, sizeof(vid_str), f) != NULL) {
-      unsigned int vid;
-      if (sscanf(vid_str, "%x", &vid) == 1 && vid == RENESAS_VID) {
-        snprintf(path, sizeof(path), "/dev/%s", ent->d_name);
-        fclose(f);
-        closedir(dir);
-        if (strlen(path) < len) {
-          strncpy(buf, path, len);
-          buf[len - 1] = '\0';
-          if (tty_name != NULL && tty_len > 0) {
-            strncpy(tty_name, ent->d_name, tty_len);
-            tty_name[tty_len - 1] = '\0';
-          }
-          return 0;
-        }
-        return -1;
-      }
-    }
-    fclose(f);
-  }
-
-  closedir(dir);
-  return -1;
-}
-
 int
 ra_open(ra_device_t *dev, const char *port) {
   char portbuf[256];
@@ -173,7 +78,7 @@ ra_open(ra_device_t *dev, const char *port) {
   bool auto_detect = false;
 
   if (port == NULL) {
-    if (find_port(portbuf, sizeof(portbuf), tty_name, sizeof(tty_name)) < 0) {
+    if (ra_find_port(portbuf, sizeof(portbuf), tty_name, sizeof(tty_name)) < 0) {
       warnx("no Renesas device found");
       return -1;
     }
@@ -190,7 +95,7 @@ ra_open(ra_device_t *dev, const char *port) {
   }
 
   /* Print USB device information */
-  print_usb_info(tty_name);
+  ra_print_usb_info(tty_name);
   if (auto_detect)
     fprintf(stderr, "Auto-detected Renesas device\n");
 
@@ -360,32 +265,58 @@ baudrate_to_speed(uint32_t baudrate) {
     return B57600;
   case 115200:
     return B115200;
+#ifdef B230400
   case 230400:
     return B230400;
+#endif
+#ifdef B460800
   case 460800:
     return B460800;
+#endif
+#ifdef B500000
   case 500000:
     return B500000;
+#endif
+#ifdef B576000
   case 576000:
     return B576000;
+#endif
+#ifdef B921600
   case 921600:
     return B921600;
+#endif
+#ifdef B1000000
   case 1000000:
     return B1000000;
+#endif
+#ifdef B1152000
   case 1152000:
     return B1152000;
+#endif
+#ifdef B1500000
   case 1500000:
     return B1500000;
+#endif
+#ifdef B2000000
   case 2000000:
     return B2000000;
+#endif
+#ifdef B2500000
   case 2500000:
     return B2500000;
+#endif
+#ifdef B3000000
   case 3000000:
     return B3000000;
+#endif
+#ifdef B3500000
   case 3500000:
     return B3500000;
+#endif
+#ifdef B4000000
   case 4000000:
     return B4000000;
+#endif
   default:
     return B0;
   }

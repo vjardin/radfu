@@ -60,3 +60,21 @@ jobs:
       - name: Verify static linking
         run: |
           file build-static/radfu | grep -q "statically linked"
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install meson ninja
+
+      - name: Configure
+        run: meson setup build -Dtests=false
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Verify binary
+        run: file build/radfu
