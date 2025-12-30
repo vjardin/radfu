@@ -12,6 +12,8 @@ jobs:
     container: debian:bookworm
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: radfu
 
       - name: Install build dependencies
         run: |
@@ -19,19 +21,22 @@ jobs:
           apt-get install -y build-essential debhelper meson ninja-build libcmocka-dev
 
       - name: Build package
+        working-directory: radfu
         run: dpkg-buildpackage -us -uc -b
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: deb-debian
-          path: ../*.deb
+          path: "*.deb"
 
   deb-ubuntu:
     name: Ubuntu package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: radfu
 
       - name: Install build dependencies
         run: |
@@ -39,13 +44,14 @@ jobs:
           sudo apt-get install -y build-essential debhelper meson ninja-build libcmocka-dev
 
       - name: Build package
+        working-directory: radfu
         run: dpkg-buildpackage -us -uc -b
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: deb-ubuntu
-          path: ../*.deb
+          path: "*.deb"
 
   rpm-fedora:
     name: Fedora package
@@ -66,8 +72,11 @@ jobs:
       - name: Build RPM
         run: rpmbuild -bb ~/rpmbuild/SPECS/radfu.spec
 
+      - name: Copy RPM to workspace
+        run: cp ~/rpmbuild/RPMS/*/*.rpm .
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: rpm-fedora
-          path: ~/rpmbuild/RPMS/**/*.rpm
+          path: "*.rpm"
