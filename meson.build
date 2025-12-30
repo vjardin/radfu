@@ -11,7 +11,13 @@ src = files(
   'src/progress.c',
 )
 
-executable('radfu', src, install : true)
+if get_option('static')
+  executable('radfu', src,
+    link_args : ['-static'],
+    install : true)
+else
+  executable('radfu', src, install : true)
+endif
 
 # Tests
 cmocka = dependency('cmocka', required : get_option('tests'))
