@@ -1,20 +1,29 @@
 #!/bin/sh
 # RADFU installer script
-# Usage: curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh
-#        curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --version v0.0.1
-#        curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --ci
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh
+#   curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh -s -- --version v0.0.1
+#   curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh -s -- --ci
 #
 # Options:
 #   --version VERSION   Install specific version (e.g., v0.0.1)
 #   --ci                Install latest CI build (unstable)
 #   --help              Show this help message
+#
+# Installation locations:
+#   - Root:     /usr/local/bin/radfu
+#   - Non-root: ~/.local/bin/radfu (also updates .bashrc, .profile, .zshrc)
 
 set -e
 
 REPO="vjardin/radfu"
-INSTALL_DIR="/usr/local/bin"
 VERSION=""
 USE_CI=false
+IS_ROOT=false
+INSTALL_DIR=""
+NEED_PATH_UPDATE=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,6 +44,26 @@ info() {
     printf "${GREEN}%s${NC}\n" "$1"
 }
 
+# Update PATH in shell config file if needed
+update_shell_config() {
+    CONFIG_FILE="$1"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return
+    fi
+
+    # Check if PATH already includes our install dir
+    if grep -q "$INSTALL_DIR" "$CONFIG_FILE" 2>/dev/null; then
+        return
+    fi
+
+    # Add PATH export
+    echo "" >> "$CONFIG_FILE"
+    echo "# Added by radfu installer" >> "$CONFIG_FILE"
+    echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$CONFIG_FILE"
+    NEED_PATH_UPDATE=true
+    info "Updated $CONFIG_FILE with PATH"
+}
+
 usage() {
     cat <<EOF
 RADFU Installer
@@ -46,15 +75,22 @@ Options:
     --ci                Install latest CI build (unstable)
     --help              Show this help message
 
+Installation locations:
+    Root:     /usr/local/bin/radfu
+    Non-root: ~/.local/bin/radfu (also updates shell config with PATH)
+
 Examples:
-    # Install latest stable release
+    # Install latest stable release (user install to ~/.local/bin)
+    curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh
+
+    # Install system-wide (requires root)
     curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh
 
     # Install specific version
-    curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --version v0.0.1
+    curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh -s -- --version v0.0.1
 
     # Install latest CI build
-    curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --ci
+    curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh -s -- --ci
 EOF
     exit 0
 }
@@ -79,10 +115,18 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Check for root
-if [ "$(id -u)" -ne 0 ]; then
-    error "This script must be run as root. Use: sudo sh install.sh"
+# Check for root and set install directory
+if [ "$(id -u)" -eq 0 ]; then
+    IS_ROOT=true
+    INSTALL_DIR="/usr/local/bin"
+else
+    IS_ROOT=false
+    INSTALL_DIR="$HOME/.local/bin"
+    warn "Not running as root. Installing to $INSTALL_DIR"
 fi
+
+# Ensure install directory exists
+mkdir -p "$INSTALL_DIR" 2>/dev/null || error "Failed to create $INSTALL_DIR"
 
 # Detect OS and architecture
 detect_platform() {
@@ -174,8 +218,8 @@ install_from_release() {
     VER="$1"
     info "Installing radfu $VER..."
 
-    # Try package first for x86_64 Linux
-    if [ "$OS" = "linux" ] && [ "$ARCH" = "x86_64" ] && [ -n "$PKG_MANAGER" ]; then
+    # Try package first for x86_64 Linux (only when running as root)
+    if [ "$IS_ROOT" = true ] && [ "$OS" = "linux" ] && [ "$ARCH" = "x86_64" ] && [ -n "$PKG_MANAGER" ]; then
         case "$PKG_MANAGER" in
             apt)
                 DEB_URL="https://github.com/$REPO/releases/download/$VER/radfu_${VER}_amd64-${PKG_DISTRO}.deb"
@@ -285,11 +329,44 @@ else
     install_from_release "$VERSION"
 fi
 
-# Verify installation
-if command -v radfu >/dev/null 2>&1; then
-    info ""
-    info "Installation complete! Run 'radfu --help' to get started."
-    radfu --version
-else
-    warn "radfu installed but not in PATH. You may need to add $INSTALL_DIR to your PATH."
+# Update shell configs for non-root installation
+if [ "$IS_ROOT" = false ]; then
+    update_shell_config "$HOME/.bashrc"
+    update_shell_config "$HOME/.profile"
+    update_shell_config "$HOME/.zshrc"
+
+    # Also check if install dir is already in PATH
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*) ;;
+        *) export PATH="$PATH:$INSTALL_DIR" ;;
+    esac
 fi
+
+# Verify installation
+info ""
+info "Installation complete!"
+info ""
+
+# Show version
+if [ -x "$INSTALL_DIR/radfu" ]; then
+    "$INSTALL_DIR/radfu" --version
+    info ""
+    info "Installed to: $INSTALL_DIR/radfu"
+else
+    warn "Binary not found at $INSTALL_DIR/radfu"
+fi
+
+# Check if in PATH
+if command -v radfu >/dev/null 2>&1; then
+    RADFU_PATH=$(command -v radfu)
+    info "Executable in PATH: $RADFU_PATH"
+else
+    if [ "$IS_ROOT" = false ]; then
+        warn "radfu not yet in PATH. Run: source ~/.bashrc (or restart your shell)"
+    else
+        warn "radfu not in PATH. Add $INSTALL_DIR to your PATH."
+    fi
+fi
+
+info ""
+info "Run 'radfu --help' to get started."

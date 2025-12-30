@@ -38,13 +38,19 @@ Implements the Renesas RA Standard Boot Firmware protocol:
 ## Installation
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh
+```
+
+Or install system-wide (requires root):
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh
 ```
 
 Or install a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --version v0.0.1
+curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sh -s -- --version v0.0.1
 ```
 
 ## Building from Source
