@@ -81,10 +81,30 @@ jobs:
           name: rpm-fedora
           path: "*.rpm"
 
+  macos:
+    name: macOS binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install meson ninja
+
+      - name: Build
+        run: |
+          meson setup build -Dtests=false
+          meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: build/radfu
+
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [deb-debian, deb-ubuntu, rpm-fedora]
+    needs: [deb-debian, deb-ubuntu, rpm-fedora, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,7 +117,9 @@ jobs:
           mv deb-debian/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-debian.deb
           mv deb-ubuntu/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-ubuntu.deb
           mv rpm-fedora/radfu-*.x86_64.rpm .
-          ls -la *.deb *.rpm
+          mv macos-arm64/radfu radfu-${{ github.ref_name }}-macos-arm64
+          chmod +x radfu-${{ github.ref_name }}-macos-arm64
+          ls -la *.deb *.rpm radfu-*-macos-*
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -138,6 +160,13 @@ jobs:
             Fedora:
 
                 sudo dnf install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-*.rpm
+
+            macOS (Apple Silicon):
+
+                curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-macos-arm64
+                chmod +x radfu-${{ github.ref_name }}-macos-arm64
+                sudo mv radfu-${{ github.ref_name }}-macos-arm64 /usr/local/bin/radfu
           files: |
             *.deb
             *.rpm
+            radfu-*-macos-*
