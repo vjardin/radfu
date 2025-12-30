@@ -1,0 +1,46 @@
+BasedOnStyle: LLVM
+
+# Function return type on separate line
+AlwaysBreakAfterReturnType: AllDefinitions
+
+# Indentation: 2 spaces, no tabs
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Braces on same line (K&R style)
+BreakBeforeBraces: Attach
+
+# Never put if/else/for/while body on same line
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortCaseLabelsOnASingleLine: false
+
+# Other formatting
+ColumnLimit: 100
+AlignAfterOpenBracket: BlockIndent
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Left
+AlignOperands: true
+AlignTrailingComments: true
+BinPackArguments: false
+BinPackParameters: false
+Cpp11BracedListStyle: false
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+IncludeBlocks: Preserve
+IndentCaseLabels: false
+PointerAlignment: Right
+ReflowComments: true
+SortIncludes: false
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
