@@ -18,7 +18,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential debhelper meson ninja-build libcmocka-dev
+          apt-get install -y build-essential debhelper meson ninja-build pkg-config libcmocka-dev
 
       - name: Build package
         working-directory: radfu
