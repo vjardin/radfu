@@ -40,6 +40,12 @@ jobs:
       - name: Run tests
         run: meson test -C build --print-errorlogs
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-linux-x86_64
+          path: build/radfu
+
   build-static:
     name: Build static
     runs-on: ubuntu-latest
@@ -58,8 +64,13 @@ jobs:
         run: meson compile -C build-static
 
       - name: Verify static linking
-        run: |
-          file build-static/radfu | grep -q "statically linked"
+        run: file build-static/radfu | grep -q "statically linked"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-linux-x86_64-static
+          path: build-static/radfu
 
   build-macos:
     name: Build macOS
@@ -78,3 +89,9 @@ jobs:
 
       - name: Verify binary
         run: file build/radfu
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-macos-arm64
+          path: build/radfu
