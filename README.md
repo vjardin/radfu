@@ -14,6 +14,8 @@ built-in ROM bootloader to perform firmware update operations via USB or UART/SC
 - Display USB device information (vendor, product, serial number)
 - Configurable UART baud rate (9600 to 4000000 bps)
 - Verify after write option
+- Descriptive MCU error reporting with error codes and messages
+- Progress callback API for library integration
 - Minimal footprint - pure C with no external dependencies
 
 ## Protocol Support
@@ -92,9 +94,9 @@ Note: USB communication is not affected by baud rate settings.
 
 ## Supported Devices
 
-- RA4 Series (tested)
-- RA2 Series (should work)
-- RA6 Series (not yet supported)
+- RA4 Series - Cortex-M4/M23 (tested)
+- RA2 Series - Cortex-M23 (should work)
+- RA6 Series - Cortex-M33 (should work, accepts 0xC6 boot code)
 
 ## Documentation Sources
 
