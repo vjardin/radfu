@@ -1,3 +1,13 @@
+radfu (0.0.3-1) unstable; urgency=low
+
+  * Add macOS support
+  * Add Linux ARM64 builds
+  * Add install.sh script for easy installation
+  * Use git describe for automatic versioning
+  * Fix man page formatting
+
+ -- Vincent Jardin <vjardin@free.fr>  Mon, 30 Dec 2024 22:00:00 +0000
+
 radfu (0.0.1-1) unstable; urgency=low
 
   * Initial release
