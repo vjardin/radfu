@@ -10,6 +10,7 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  gcc
+BuildRequires:  libcmocka-devel
 
 %description
 A flash programming tool for Renesas RA microcontroller series.

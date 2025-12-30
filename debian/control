@@ -2,7 +2,7 @@ Source: radfu
 Section: utils
 Priority: optional
 Maintainer: Vincent Jardin <vjardin@free.fr>
-Build-Depends: debhelper-compat (= 13), meson, ninja-build
+Build-Depends: debhelper-compat (= 13), meson, ninja-build, libcmocka-dev
 Standards-Version: 4.6.0
 Homepage: https://github.com/vjardin/radfu
 
