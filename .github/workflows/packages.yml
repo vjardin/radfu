@@ -65,8 +65,9 @@ jobs:
 
       - name: Create tarball
         run: |
+          VERSION=$(grep '^Version:' radfu.spec | awk '{print $2}')
           mkdir -p ~/rpmbuild/{SOURCES,SPECS}
-          tar czf ~/rpmbuild/SOURCES/radfu-0.0.1.tar.gz --transform 's,^,radfu-0.0.1/,' *
+          tar czf ~/rpmbuild/SOURCES/radfu-${VERSION}.tar.gz --transform "s,^,radfu-${VERSION}/," *
           cp radfu.spec ~/rpmbuild/SPECS/
 
       - name: Build RPM
