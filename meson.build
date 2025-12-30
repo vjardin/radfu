@@ -3,6 +3,22 @@ project('radfu', 'c',
   license : 'AGPL-3.0',
   default_options : ['c_std=c11', 'warning_level=3'])
 
+# Get version from git describe (tag or sha), fallback to project version
+git = find_program('git', required : false)
+if git.found()
+  git_describe = run_command(git, 'describe', '--tags', '--always', check : false)
+  if git_describe.returncode() == 0
+    version = git_describe.stdout().strip()
+  else
+    version = meson.project_version()
+  endif
+else
+  version = meson.project_version()
+endif
+
+# Pass version to source code
+add_project_arguments('-DVERSION="' + version + '"', language : 'c')
+
 src = files(
   'src/main.c',
   'src/radfu.c',

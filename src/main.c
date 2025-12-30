@@ -15,7 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VERSION "0.0.1"
+#ifndef VERSION
+#warning "VERSION not defined, using dummy-version"
+#define VERSION "dummy-version"
+#endif
 
 static void
 usage(int status) {
