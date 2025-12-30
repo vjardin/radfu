@@ -11,6 +11,7 @@ BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  gcc
 BuildRequires:  libcmocka-devel
+BuildRequires:  help2man
 
 %description
 A flash programming tool for Renesas RA microcontroller series.
@@ -31,3 +32,4 @@ update operations via USB or UART/SCI interfaces.
 %license LICENSE
 %doc README.md
 %{_bindir}/radfu
+%{_mandir}/man1/radfu.1*

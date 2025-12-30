@@ -12,11 +12,28 @@ src = files(
 )
 
 if get_option('static')
-  executable('radfu', src,
+  radfu_exe = executable('radfu', src,
     link_args : ['-static'],
     install : true)
 else
-  executable('radfu', src, install : true)
+  radfu_exe = executable('radfu', src, install : true)
+endif
+
+# Man page generation with help2man
+help2man = find_program('help2man', required : false)
+if help2man.found()
+  custom_target('radfu.1',
+    output : 'radfu.1',
+    input : 'radfu.h2m',
+    command : [help2man,
+      '--include=@INPUT@',
+      '--section=1',
+      '--no-info',
+      '--output=@OUTPUT@',
+      radfu_exe],
+    depends : radfu_exe,
+    install : true,
+    install_dir : get_option('mandir') / 'man1')
 endif
 
 # Tests

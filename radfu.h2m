@@ -1,0 +1,141 @@
+[name]
+radfu - Renesas RA Device Firmware Update tool
+
+[description]
+radfu is a flash programming tool for Renesas RA microcontroller series.
+It communicates with the built-in ROM bootloader to perform firmware update
+operations via USB or UART/SCI interfaces.
+
+The tool implements the Renesas RA Standard Boot Firmware protocol and
+supports the following MCU series:
+
+.TP
+.B RA4 Series (Cortex-M4/M23)
+Tested and fully supported. Uses boot code 0xC3.
+
+.TP
+.B RA2 Series (Cortex-M23)
+Should work, uses boot code 0xC3.
+
+.TP
+.B RA6 Series (Cortex-M33)
+Should work, uses boot code 0xC6.
+
+[entering dfu mode]
+To program an RA microcontroller, you must first enter DFU (Device Firmware
+Update) mode by activating the ROM bootloader.
+
+.SS Hardware Configuration
+The MD pin controls the boot mode. When MD is LOW at reset, the MCU enters
+the ROM bootloader instead of running user code.
+
+.SS EK-RA4M2 Development Board
+On the EK-RA4M2 evaluation board, jumper J16 controls the MD pin (P201):
+
+.TP
+.B J16 Open (default)
+Single-Chip Mode - Normal operation, runs user application.
+
+.TP
+.B J16 Installed
+SCI/USB Boot Mode - ROM bootloader active, ready for programming.
+
+.SS Entering DFU Mode on EK-RA4M2
+.IP 1. 4
+Install jumper on J16 (shorts P201/MD to GND)
+.IP 2.
+Connect USB cable to Device USB port (J11) - not the Debug USB
+.IP 3.
+Press RESET button
+.IP 4.
+MCU enters ROM bootloader and appears as USB device
+
+.SS Returning to Normal Mode
+.IP 1. 4
+Remove jumper from J16
+.IP 2.
+Press RESET button
+.IP 3.
+MCU runs your application
+
+[commands]
+.TP
+.B info
+Query and display device information including MCU signature, firmware
+version, and memory area layout. This command does not modify the device.
+
+.TP
+.B read <file>
+Read flash memory contents to a binary file. Use \fB-a\fR to specify the
+start address and \fB-s\fR for the size to read. If size is omitted, reads
+the entire flash area.
+
+.TP
+.B write <file>
+Write a binary file to flash memory. The flash area is automatically erased
+before writing. Use \fB-a\fR to specify the start address. Use \fB-v\fR to
+verify the written data matches the file.
+
+.TP
+.B erase
+Erase flash memory sectors. Use \fB-a\fR and \fB-s\fR to specify the address
+range. Use \fB-e\fR (--erase-all) to perform a total area erasure.
+
+[id authentication]
+Some RA devices have ID code protection enabled. To access protected devices,
+you must provide the correct 16-byte ID code using the \fB-i\fR option.
+
+The ID code must be specified as 32 hexadecimal characters (with optional
+0x prefix):
+
+.nf
+    radfu info -i 0102030405060708090A0B0C0D0E0F10
+.fi
+
+.SS ALeRASE Magic ID
+The special ID code "ALeRASE" (followed by 0xFF padding) triggers a total
+area erasure on devices that support it. Use \fB-e\fR (--erase-all) as a
+shortcut:
+
+.nf
+    radfu erase -e
+.fi
+
+[baud rate]
+When using UART/SCI (not USB), the baud rate can be configured with \fB-b\fR.
+Supported rates depend on the MCU's SCI clock:
+
+.TP
+.B RA4 Series (24 MHz SCI)
+9600, 115200, 230400, 460800, 921600, 1000000, 1500000
+
+.TP
+.B RA6 Series (60 MHz SCI)
+9600 to 4000000 (including 2000000, 3000000, 3500000)
+
+USB communication is not affected by baud rate settings.
+
+[warnings]
+.B USE AT YOUR OWN RISK
+
+This software is provided "as is" without warranty of any kind. The authors
+and contributors are not responsible for any damage to your hardware,
+bricked devices, or data loss resulting from the use of this tool.
+
+.IP \(bu 4
+Always verify you have a backup of important firmware before erasing
+.IP \(bu
+Double-check addresses and sizes before write or erase operations
+.IP \(bu
+Ensure stable power supply during flash operations
+.IP \(bu
+This tool is not officially supported by Renesas
+
+[see also]
+.TP
+.B Project homepage
+https://github.com/vjardin/radfu
+
+.TP
+.B Renesas documentation
+R01AN5372 - Renesas RA Family System Specifications for Standard Boot Firmware
