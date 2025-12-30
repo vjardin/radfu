@@ -128,6 +128,34 @@ fi
 # Ensure install directory exists
 mkdir -p "$INSTALL_DIR" 2>/dev/null || error "Failed to create $INSTALL_DIR"
 
+# Remove existing installation
+remove_existing() {
+    # Check for package installation
+    if [ "$IS_ROOT" = true ]; then
+        if command -v dpkg >/dev/null 2>&1 && dpkg -l radfu 2>/dev/null | grep -q "^ii"; then
+            info "Removing existing deb package..."
+            apt-get remove -y radfu >/dev/null 2>&1 || true
+        elif command -v rpm >/dev/null 2>&1 && rpm -q radfu >/dev/null 2>&1; then
+            info "Removing existing rpm package..."
+            if command -v dnf >/dev/null 2>&1; then
+                dnf remove -y radfu >/dev/null 2>&1 || true
+            elif command -v yum >/dev/null 2>&1; then
+                yum remove -y radfu >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+
+    # Check for binary installations
+    for dir in /usr/local/bin /usr/bin "$HOME/.local/bin"; do
+        if [ -x "$dir/radfu" ]; then
+            if [ "$IS_ROOT" = true ] || [ "$dir" = "$HOME/.local/bin" ]; then
+                info "Removing existing binary at $dir/radfu..."
+                rm -f "$dir/radfu" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+
 # Detect OS and architecture
 detect_platform() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -318,6 +346,7 @@ install_from_ci() {
 # Main
 detect_platform
 detect_package_manager
+remove_existing
 
 if [ "$USE_CI" = true ]; then
     install_from_ci
