@@ -347,25 +347,21 @@ info ""
 info "Installation complete!"
 info ""
 
-# Show version
-if [ -x "$INSTALL_DIR/radfu" ]; then
+# Check if in PATH and show version
+if command -v radfu >/dev/null 2>&1; then
+    radfu --version
+    info ""
+    RADFU_PATH=$(command -v radfu)
+    info "Installed to: $RADFU_PATH"
+elif [ -x "$INSTALL_DIR/radfu" ]; then
     "$INSTALL_DIR/radfu" --version
     info ""
     info "Installed to: $INSTALL_DIR/radfu"
-else
-    warn "Binary not found at $INSTALL_DIR/radfu"
-fi
-
-# Check if in PATH
-if command -v radfu >/dev/null 2>&1; then
-    RADFU_PATH=$(command -v radfu)
-    info "Executable in PATH: $RADFU_PATH"
-else
     if [ "$IS_ROOT" = false ]; then
         warn "radfu not yet in PATH. Run: source ~/.bashrc (or restart your shell)"
-    else
-        warn "radfu not in PATH. Add $INSTALL_DIR to your PATH."
     fi
+else
+    warn "Installation verification failed"
 fi
 
 info ""
