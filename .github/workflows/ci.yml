@@ -72,6 +72,58 @@ jobs:
           name: radfu-linux-x86_64-static
           path: build-static/radfu
 
+  build-linux-arm64:
+    name: Build Linux ARM64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build libcmocka-dev
+
+      - name: Configure
+        run: meson setup build
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run tests
+        run: meson test -C build --print-errorlogs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-linux-arm64
+          path: build/radfu
+
+  build-linux-arm64-static:
+    name: Build Linux ARM64 static
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build
+
+      - name: Configure static build
+        run: meson setup build-static -Dstatic=true -Dtests=false
+
+      - name: Build static
+        run: meson compile -C build-static
+
+      - name: Verify static linking
+        run: file build-static/radfu | grep -q "statically linked"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-linux-arm64-static
+          path: build-static/radfu
+
   build-macos:
     name: Build macOS
     runs-on: macos-latest

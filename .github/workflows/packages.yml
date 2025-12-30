@@ -81,6 +81,50 @@ jobs:
           name: rpm-fedora
           path: "*.rpm"
 
+  linux-arm64:
+    name: Linux ARM64 binary
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build
+
+      - name: Build
+        run: |
+          meson setup build -Dtests=false
+          meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: build/radfu
+
+  linux-arm64-static:
+    name: Linux ARM64 static binary
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build
+
+      - name: Build static
+        run: |
+          meson setup build -Dstatic=true -Dtests=false
+          meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-static
+          path: build/radfu
+
   macos:
     name: macOS binary
     runs-on: macos-latest
@@ -104,7 +148,7 @@ jobs:
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [deb-debian, deb-ubuntu, rpm-fedora, macos]
+    needs: [deb-debian, deb-ubuntu, rpm-fedora, linux-arm64, linux-arm64-static, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -117,9 +161,11 @@ jobs:
           mv deb-debian/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-debian.deb
           mv deb-ubuntu/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-ubuntu.deb
           mv rpm-fedora/radfu-*.x86_64.rpm .
+          mv linux-arm64/radfu radfu-${{ github.ref_name }}-linux-arm64
+          mv linux-arm64-static/radfu radfu-${{ github.ref_name }}-linux-arm64-static
           mv macos-arm64/radfu radfu-${{ github.ref_name }}-macos-arm64
-          chmod +x radfu-${{ github.ref_name }}-macos-arm64
-          ls -la *.deb *.rpm radfu-*-macos-*
+          chmod +x radfu-${{ github.ref_name }}-linux-arm64 radfu-${{ github.ref_name }}-linux-arm64-static radfu-${{ github.ref_name }}-macos-arm64
+          ls -la *.deb *.rpm radfu-*-linux-* radfu-*-macos-*
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -161,6 +207,18 @@ jobs:
 
                 sudo dnf install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-*.rpm
 
+            Linux ARM64 (Raspberry Pi, etc.):
+
+                curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-linux-arm64
+                chmod +x radfu-${{ github.ref_name }}-linux-arm64
+                sudo mv radfu-${{ github.ref_name }}-linux-arm64 /usr/local/bin/radfu
+
+            Linux ARM64 static (no dependencies):
+
+                curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-linux-arm64-static
+                chmod +x radfu-${{ github.ref_name }}-linux-arm64-static
+                sudo mv radfu-${{ github.ref_name }}-linux-arm64-static /usr/local/bin/radfu
+
             macOS (Apple Silicon):
 
                 curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-macos-arm64
@@ -169,4 +227,5 @@ jobs:
           files: |
             *.deb
             *.rpm
+            radfu-*-linux-*
             radfu-*-macos-*
