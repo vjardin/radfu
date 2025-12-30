@@ -81,6 +81,28 @@ jobs:
           name: rpm-fedora
           path: "*.rpm"
 
+  linux-x86_64-static:
+    name: Linux x86_64 static binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build
+
+      - name: Build static
+        run: |
+          meson setup build -Dstatic=true -Dtests=false
+          meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-static
+          path: build/radfu
+
   linux-arm64:
     name: Linux ARM64 binary
     runs-on: ubuntu-24.04-arm
@@ -148,7 +170,7 @@ jobs:
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [deb-debian, deb-ubuntu, rpm-fedora, linux-arm64, linux-arm64-static, macos]
+    needs: [deb-debian, deb-ubuntu, rpm-fedora, linux-x86_64-static, linux-arm64, linux-arm64-static, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -161,10 +183,11 @@ jobs:
           mv deb-debian/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-debian.deb
           mv deb-ubuntu/radfu_*_amd64.deb radfu_${{ github.ref_name }}_amd64-ubuntu.deb
           mv rpm-fedora/radfu-*.x86_64.rpm .
+          mv linux-x86_64-static/radfu radfu-${{ github.ref_name }}-linux-x86_64-static
           mv linux-arm64/radfu radfu-${{ github.ref_name }}-linux-arm64
           mv linux-arm64-static/radfu radfu-${{ github.ref_name }}-linux-arm64-static
           mv macos-arm64/radfu radfu-${{ github.ref_name }}-macos-arm64
-          chmod +x radfu-${{ github.ref_name }}-linux-arm64 radfu-${{ github.ref_name }}-linux-arm64-static radfu-${{ github.ref_name }}-macos-arm64
+          chmod +x radfu-${{ github.ref_name }}-linux-* radfu-${{ github.ref_name }}-macos-*
           ls -la *.deb *.rpm radfu-*-linux-* radfu-*-macos-*
 
       - name: Create release
@@ -191,7 +214,11 @@ jobs:
             - RA2 Series (Cortex-M23)
             - RA6 Series (Cortex-M33)
 
-            ## Installation
+            ## Quick Install
+
+                curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/master/install.sh | sudo sh
+
+            ## Manual Installation
 
             Debian 12 (Bookworm):
 
@@ -206,6 +233,12 @@ jobs:
             Fedora:
 
                 sudo dnf install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-*.rpm
+
+            Linux x86_64 static (no dependencies):
+
+                curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-linux-x86_64-static
+                chmod +x radfu-${{ github.ref_name }}-linux-x86_64-static
+                sudo mv radfu-${{ github.ref_name }}-linux-x86_64-static /usr/local/bin/radfu
 
             Linux ARM64 (Raspberry Pi, etc.):
 

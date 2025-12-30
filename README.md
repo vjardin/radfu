@@ -35,7 +35,19 @@ Implements the Renesas RA Standard Boot Firmware protocol:
 | ARE (Area)    | 0x3B | Implemented |
 | IDA (ID Auth) | 0x30 | Implemented |
 
-## Building
+## Installation
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh
+```
+
+Or install a specific version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/vjardin/radfu/master/install.sh | sudo sh -s -- --version v0.0.1
+```
+
+## Building from Source
 
 Requires: meson, ninja, and optionally cmocka for tests.
 
