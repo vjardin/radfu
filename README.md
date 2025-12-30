@@ -1,5 +1,7 @@
 # RADFU - Renesas RA Device Firmware Update
 
+[![CI](https://github.com/vjardin/radfu/actions/workflows/ci.yml/badge.svg)](https://github.com/vjardin/radfu/actions/workflows/ci.yml)
+
 A flash programming tool for Renesas RA microcontroller series. Communicates with the
 built-in ROM bootloader to perform firmware update operations via USB or UART/SCI interfaces.
 
