@@ -106,6 +106,75 @@ When using UART (not USB), the following baud rates are supported:
 
 Note: USB communication is not affected by baud rate settings.
 
+## ID Code Protection (OSIS)
+
+Renesas RA MCUs have a 128-bit OCD/Serial Programmer ID Setting Register (OSIS) that controls
+flash protection. The register consists of a 16-byte ID code where bits [127:126] determine the
+security mode.
+
+### Security Modes
+
+| OSIS[127] | OSIS[126] | Mode                   | Description                                 |
+|-----------|-----------|------------------------|---------------------------------------------|
+| 1         | 1         | Unlocked               | No protection (factory default: all 0xFF)   |
+| 1         | 0         | Locked with All Erase  | ID auth required; ALeRASE mass-erase works  |
+| 0         | 1         | Locked                 | ID auth required; ALeRASE disabled          |
+| 0         | 0         | Disabled               | Serial programming disabled (infinite loop) |
+
+### Factory Default State
+
+A fresh Renesas RA chip has erased flash (all 0xFF bytes). Since OSIS contains 0xFFFFFFFF...,
+the device is unlocked by default with no protection enabled.
+
+### ALeRASE Total Area Erasure
+
+The --erase-all option sends the magic ID code ALeRASE (0x414C655241534500FF...) which triggers
+a complete erasure of all flash areas, including the ID code itself. This only works when the
+device is configured with OSIS[127:126] = 10b (Locked with All Erase support).
+
+Important: If the device has OSIS[127:126] = 01b (Locked mode), the ALeRASE command will fail
+and the device cannot be recovered without the correct ID code.
+
+### Configuring ID Code Protection
+
+The OSIS register is stored in option-setting memory at non-consecutive addresses:
+0x01010018, 0x01010020, 0x01010028, 0x01010030 (4 x 32-bit words).
+
+Using SREC/Intel HEX files:
+
+The OSIS region can be programmed by including it in a SREC or Intel HEX file that contains
+both the application code and the OSIS data at the correct addresses. Flash programmers
+(J-Link, Renesas Flash Programmer) will write both regions in a single operation.
+
+Using Zephyr build framework (not tested):
+
+Zephyr generates HEX output with CONFIG_BUILD_OUTPUT_HEX=y. To include OSIS data, create
+separate binary files for each OSIS word and merge into a single HEX:
+
+```sh
+# Example: "Locked with All Erase" mode (OSIS[127:126]=10b) with ID=0x123456789ABCDEF0
+# OSIS3 at 0x01010030: 0x80000000 (bit127=1, bit126=0 for "Locked with All Erase")
+# OSIS2 at 0x01010028: 0x12345678
+# OSIS1 at 0x01010020: 0x9ABCDEF0
+# OSIS0 at 0x01010018: 0x00000000
+
+printf '\x00\x00\x00\x80' > osis3.bin  # little-endian: 0x80000000
+printf '\x78\x56\x34\x12' > osis2.bin  # little-endian: 0x12345678
+printf '\xf0\xde\xbc\x9a' > osis1.bin  # little-endian: 0x9ABCDEF0
+printf '\x00\x00\x00\x00' > osis0.bin  # little-endian: 0x00000000
+
+objcopy -I binary -O ihex --change-addresses=0x01010030 osis3.bin osis3.hex
+objcopy -I binary -O ihex --change-addresses=0x01010028 osis2.bin osis2.hex
+objcopy -I binary -O ihex --change-addresses=0x01010020 osis1.bin osis1.hex
+objcopy -I binary -O ihex --change-addresses=0x01010018 osis0.bin osis0.hex
+
+srec_cat osis0.hex -intel osis1.hex -intel osis2.hex -intel osis3.hex -intel \
+         -o osis.hex -intel
+
+# Merge with application
+srec_cat zephyr.hex -intel osis.hex -intel -o combined.hex -intel
+```
+
 ## Supported Platforms
 
 - Linux (tested)

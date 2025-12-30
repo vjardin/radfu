@@ -184,6 +184,8 @@ main(int argc, char *argv[]) {
     }
     memcpy(id_code, ALERASE_ID, ID_CODE_LEN);
     use_auth = true;
+    warnx("note: ALeRASE requires OSIS[127:126]=10b (Locked with All Erase support)");
+    warnx("      will fail if device has OSIS[127:126]=01b (Locked mode)");
   } else if (id_str != NULL) {
     if (parse_id_code(id_str, id_code) < 0)
       errx(EXIT_FAILURE, "invalid ID code format");
