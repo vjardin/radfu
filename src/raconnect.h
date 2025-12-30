@@ -17,7 +17,7 @@
 #define RENESAS_VID 0x045B
 #define RENESAS_PID 0x0261
 
-#define MAX_AREAS 3
+#define MAX_AREAS 4
 #define MAX_TRIES 20
 #define TIMEOUT_MS 100
 

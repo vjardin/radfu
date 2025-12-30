@@ -44,20 +44,6 @@ unpack_with_error(
   return ret;
 }
 
-static void
-uint32_to_be(uint32_t val, uint8_t *buf) {
-  buf[0] = (val >> 24) & 0xFF;
-  buf[1] = (val >> 16) & 0xFF;
-  buf[2] = (val >> 8) & 0xFF;
-  buf[3] = val & 0xFF;
-}
-
-static uint32_t
-be_to_uint32(const uint8_t *buf) {
-  return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) |
-         (uint32_t)buf[3];
-}
-
 static int
 set_size_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
   uint32_t align = dev->chip_layout[dev->sel_area].align;

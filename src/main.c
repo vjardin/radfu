@@ -8,6 +8,7 @@
 
 #include "raconnect.h"
 #include "radfu.h"
+#include "raosis.h"
 
 #include <err.h>
 #include <getopt.h>
@@ -32,6 +33,7 @@ usage(int status) {
       "  read <file>    Read flash memory to file\n"
       "  write <file>   Write file to flash memory\n"
       "  erase          Erase flash sectors\n"
+      "  osis           Show OSIS (ID code protection) status\n"
       "\n"
       "Options:\n"
       "  -p, --port <dev>     Serial port (auto-detect if omitted)\n"
@@ -48,7 +50,8 @@ usage(int status) {
       "  radfu info\n"
       "  radfu read -a 0x0 -s 0x10000 firmware.bin\n"
       "  radfu write -b 1000000 -a 0x0 -v firmware.bin\n"
-      "  radfu erase -a 0x0 -s 0x10000\n");
+      "  radfu erase -a 0x0 -s 0x10000\n"
+      "  radfu osis\n");
   exit(status);
 }
 
@@ -112,6 +115,7 @@ enum command {
   CMD_READ,
   CMD_WRITE,
   CMD_ERASE,
+  CMD_OSIS,
 };
 
 static const struct option longopts[] = {
@@ -211,6 +215,8 @@ main(int argc, char *argv[]) {
     file = argv[optind];
   } else if (strcmp(command, "erase") == 0) {
     cmd = CMD_ERASE;
+  } else if (strcmp(command, "osis") == 0) {
+    cmd = CMD_OSIS;
   } else {
     errx(EXIT_FAILURE, "unknown command: %s", command);
   }
@@ -257,6 +263,14 @@ main(int argc, char *argv[]) {
     break;
   case CMD_ERASE:
     ret = ra_erase(&dev, address, size);
+    break;
+  case CMD_OSIS:
+    {
+      osis_t osis;
+      ret = ra_osis_read(&dev, &osis);
+      if (ret == 0)
+        ra_osis_print(&osis);
+    }
     break;
   default:
     break;

@@ -37,6 +37,26 @@
 #define MAX_PKT_LEN (MAX_DATA_LEN + 6) /* SOD + LNH + LNL + CMD + data + SUM + ETX */
 
 /*
+ * Convert uint32_t to big-endian byte array (portable across architectures)
+ */
+static inline void
+uint32_to_be(uint32_t val, uint8_t *buf) {
+  buf[0] = (val >> 24) & 0xFF;
+  buf[1] = (val >> 16) & 0xFF;
+  buf[2] = (val >> 8) & 0xFF;
+  buf[3] = val & 0xFF;
+}
+
+/*
+ * Convert big-endian byte array to uint32_t (portable across architectures)
+ */
+static inline uint32_t
+be_to_uint32(const uint8_t *buf) {
+  return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) |
+         ((uint32_t)buf[2] << 8) | (uint32_t)buf[3];
+}
+
+/*
  * Calculate two's complement checksum
  */
 uint8_t ra_calc_sum(uint8_t cmd, const uint8_t *data, size_t len);

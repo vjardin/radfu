@@ -24,6 +24,7 @@ src = files(
   'src/radfu.c',
   'src/raconnect.c',
   'src/rapacker.c',
+  'src/raosis.c',
   'src/progress.c',
 )
 
