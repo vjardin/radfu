@@ -1,2 +1,0 @@
-option('tests', type : 'boolean', value : true, description : 'Build unit tests')
-option('static', type : 'boolean', value : false, description : 'Build static executable')
