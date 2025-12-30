@@ -29,19 +29,16 @@
  */
 static ssize_t
 unpack_with_error(
-    const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, const char *context
-) {
+    const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, const char *context) {
   uint8_t cmd;
   ssize_t ret = ra_unpack_pkt(buf, buflen, data, data_len, &cmd);
   if (ret < 0 && (cmd & STATUS_ERR)) {
     uint8_t err_code = cmd & 0x7F;
-    warnx(
-        "%s: MCU error 0x%02X (%s: %s)",
+    warnx("%s: MCU error 0x%02X (%s: %s)",
         context,
         err_code,
         ra_strerror(err_code),
-        ra_strdesc(err_code)
-    );
+        ra_strdesc(err_code));
   }
   return ret;
 }

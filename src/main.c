@@ -21,8 +21,7 @@ static void
 usage(int status) {
   FILE *out = status == EXIT_SUCCESS ? stdout : stderr;
 
-  fprintf(
-      out,
+  fprintf(out,
       "Usage: radfu <command> [options] [file]\n"
       "\n"
       "Commands:\n"
@@ -46,8 +45,7 @@ usage(int status) {
       "  radfu info\n"
       "  radfu read -a 0x0 -s 0x10000 firmware.bin\n"
       "  radfu write -b 1000000 -a 0x0 -v firmware.bin\n"
-      "  radfu erase -a 0x0 -s 0x10000\n"
-  );
+      "  radfu erase -a 0x0 -s 0x10000\n");
   exit(status);
 }
 
@@ -74,8 +72,9 @@ parse_hex(const char *str) {
 #define ID_CODE_LEN 16
 
 /* Magic ID code for total area erasure: "ALeRASE" + 0xFF padding */
-static const uint8_t ALERASE_ID[ID_CODE_LEN] = { 'A',  'L',  'e',  'R',  'A',  'S',  'E',  0xFF,
-                                                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+static const uint8_t ALERASE_ID[ID_CODE_LEN] = {
+  'A', 'L', 'e', 'R', 'A', 'S', 'E', 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
 
 static int
 parse_id_code(const char *str, uint8_t *id_code) {

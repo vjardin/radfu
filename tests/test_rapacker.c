@@ -143,9 +143,12 @@ test_strerror(void **state) {
 int
 main(void) {
   const struct CMUnitTest tests[] = {
-    cmocka_unit_test(test_calc_sum),    cmocka_unit_test(test_unpack),
-    cmocka_unit_test(test_read_unpack), cmocka_unit_test(test_pack_unpack),
-    cmocka_unit_test(test_err_unpack),  cmocka_unit_test(test_strerror),
+    cmocka_unit_test(test_calc_sum),
+    cmocka_unit_test(test_unpack),
+    cmocka_unit_test(test_read_unpack),
+    cmocka_unit_test(test_pack_unpack),
+    cmocka_unit_test(test_err_unpack),
+    cmocka_unit_test(test_strerror),
   };
 
   return cmocka_run_group_tests(tests, NULL, NULL);

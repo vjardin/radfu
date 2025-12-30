@@ -21,7 +21,7 @@ AllowShortCaseLabelsOnASingleLine: false
 
 # Other formatting
 ColumnLimit: 100
-AlignAfterOpenBracket: BlockIndent
+AlignAfterOpenBracket: DontAlign
 AlignArrayOfStructures: Left
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false

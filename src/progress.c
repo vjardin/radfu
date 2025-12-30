@@ -58,9 +58,13 @@ progress_update(progress_t *p, size_t current) {
   memset(bar, '#', filled);
   bar[p->width] = '\0';
 
-  fprintf(
-      stderr, "\r%s: [%s] %3d%% (%zu/%zu)", p->desc ? p->desc : "", bar, percent, current, p->total
-  );
+  fprintf(stderr,
+      "\r%s: [%s] %3d%% (%zu/%zu)",
+      p->desc ? p->desc : "",
+      bar,
+      percent,
+      current,
+      p->total);
   fflush(stderr);
 }
 

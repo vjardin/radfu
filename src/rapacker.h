@@ -46,8 +46,8 @@ uint8_t ra_calc_sum(uint8_t cmd, const uint8_t *data, size_t len);
  *
  * Returns: packet length on success, -1 on error
  */
-ssize_t
-ra_pack_pkt(uint8_t *buf, size_t buflen, uint8_t cmd, const uint8_t *data, size_t len, bool ack);
+ssize_t ra_pack_pkt(
+    uint8_t *buf, size_t buflen, uint8_t cmd, const uint8_t *data, size_t len, bool ack);
 
 /*
  * Unpack a protocol packet
@@ -55,8 +55,8 @@ ra_pack_pkt(uint8_t *buf, size_t buflen, uint8_t cmd, const uint8_t *data, size_
  * Returns: data length on success, -1 on error (sets errno)
  * If err_code is not NULL and MCU returns an error, the error code is stored there
  */
-ssize_t
-ra_unpack_pkt(const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, uint8_t *cmd);
+ssize_t ra_unpack_pkt(
+    const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, uint8_t *cmd);
 
 /*
  * Get error name for MCU error code (e.g., "ERR_ADDR")
