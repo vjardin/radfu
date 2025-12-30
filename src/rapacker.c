@@ -10,33 +10,43 @@
 #include <errno.h>
 #include <string.h>
 
-/* MCU error codes */
+/* MCU error codes with descriptive messages */
 static const struct {
   uint8_t code;
-  const char *msg;
+  const char *name;
+  const char *desc;
 } error_codes[] = {
-  { 0x0C, "ERR_UNSU" },
-  { 0xC1, "ERR_PCKT" },
-  { 0xC2, "ERR_CHKS" },
-  { 0xC3, "ERR_FLOW" },
-  { 0xD0, "ERR_ADDR" },
-  { 0xD4, "ERR_BAUD" },
-  { 0xDA, "ERR_PROT" },
-  { 0xDB, "ERR_ID"   },
-  { 0xDC, "ERR_SERI" },
-  { 0xE1, "ERR_ERA"  },
-  { 0xE2, "ERR_WRI"  },
-  { 0xE7, "ERR_SEQ"  },
-  { 0,    NULL       }
+  { 0x0C, "ERR_UNSU", "unsupported command"         },
+  { 0xC1, "ERR_PCKT", "packet error (length/ETX)"   },
+  { 0xC2, "ERR_CHKS", "checksum mismatch"           },
+  { 0xC3, "ERR_FLOW", "command flow error"          },
+  { 0xD0, "ERR_ADDR", "invalid address"             },
+  { 0xD4, "ERR_BAUD", "baud rate margin error"      },
+  { 0xDA, "ERR_PROT", "protection error"            },
+  { 0xDB, "ERR_ID",   "ID authentication mismatch"  },
+  { 0xDC, "ERR_SERI", "serial programming disabled" },
+  { 0xE1, "ERR_ERA",  "erase failed"                },
+  { 0xE2, "ERR_WRI",  "write failed"                },
+  { 0xE7, "ERR_SEQ",  "sequencer error"             },
+  { 0,    NULL,       NULL                          }
 };
 
 const char *
 ra_strerror(uint8_t code) {
-  for (size_t i = 0; error_codes[i].msg != NULL; i++) {
+  for (size_t i = 0; error_codes[i].name != NULL; i++) {
     if (error_codes[i].code == code)
-      return error_codes[i].msg;
+      return error_codes[i].name;
   }
   return "ERR_UNKNOWN";
+}
+
+const char *
+ra_strdesc(uint8_t code) {
+  for (size_t i = 0; error_codes[i].name != NULL; i++) {
+    if (error_codes[i].code == code)
+      return error_codes[i].desc;
+  }
+  return "unknown error";
 }
 
 uint8_t

@@ -53,13 +53,19 @@ ra_pack_pkt(uint8_t *buf, size_t buflen, uint8_t cmd, const uint8_t *data, size_
  * Unpack a protocol packet
  *
  * Returns: data length on success, -1 on error (sets errno)
+ * If err_code is not NULL and MCU returns an error, the error code is stored there
  */
 ssize_t
 ra_unpack_pkt(const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, uint8_t *cmd);
 
 /*
- * Get error string for MCU error code
+ * Get error name for MCU error code (e.g., "ERR_ADDR")
  */
 const char *ra_strerror(uint8_t code);
+
+/*
+ * Get error description for MCU error code (e.g., "invalid address")
+ */
+const char *ra_strdesc(uint8_t code);
 
 #endif /* RAPACKER_H */

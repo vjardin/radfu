@@ -24,7 +24,8 @@
 #include <unistd.h>
 
 #define GENERIC_CODE 0x55
-#define BOOT_CODE 0xC3
+#define BOOT_CODE_M4 0xC3  /* Cortex-M4/M23 (RA2/RA4 series) */
+#define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA6 series) */
 
 /* Forward declarations for static functions */
 static int ra_inquire(ra_device_t *dev);
@@ -327,9 +328,15 @@ ra_confirm(ra_device_t *dev) {
       continue;
 
     ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);
-    if (n == 1 && resp == BOOT_CODE) {
-      fprintf(stderr, "Reply received (0xC3)\n");
-      return 0;
+    if (n == 1) {
+      if (resp == BOOT_CODE_M4) {
+        fprintf(stderr, "Boot code 0xC3 (Cortex-M4/M23)\n");
+        return 0;
+      }
+      if (resp == BOOT_CODE_M33) {
+        fprintf(stderr, "Boot code 0xC6 (Cortex-M33)\n");
+        return 0;
+      }
     }
 
     if (n < 0)

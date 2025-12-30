@@ -23,6 +23,29 @@
 
 #define CHUNK_SIZE 1024
 
+/*
+ * Unpack packet and print MCU error if present
+ * Returns: data length on success, -1 on error
+ */
+static ssize_t
+unpack_with_error(
+    const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, const char *context
+) {
+  uint8_t cmd;
+  ssize_t ret = ra_unpack_pkt(buf, buflen, data, data_len, &cmd);
+  if (ret < 0 && (cmd & STATUS_ERR)) {
+    uint8_t err_code = cmd & 0x7F;
+    warnx(
+        "%s: MCU error 0x%02X (%s: %s)",
+        context,
+        err_code,
+        ra_strerror(err_code),
+        ra_strdesc(err_code)
+    );
+  }
+  return ret;
+}
+
 static void
 uint32_to_be(uint32_t val, uint8_t *buf) {
   buf[0] = (val >> 24) & 0xFF;
@@ -95,10 +118,8 @@ ra_get_area_info(ra_device_t *dev, bool print) {
       return -1;
     }
 
-    if (ra_unpack_pkt(resp, n, data, &data_len, NULL) < 0) {
-      warnx("failed to unpack area info");
+    if (unpack_with_error(resp, n, data, &data_len, "area info") < 0)
       return -1;
-    }
 
     /* Parse: KOA(1) + SAD(4) + EAD(4) + EAU(4) + WAU(4) = 17 bytes */
     if (data_len < 17) {
@@ -191,10 +212,8 @@ ra_authenticate(ra_device_t *dev, const uint8_t *id_code) {
   }
 
   size_t data_len;
-  if (ra_unpack_pkt(resp, n, NULL, &data_len, NULL) < 0) {
-    warnx("ID authentication failed");
+  if (unpack_with_error(resp, n, NULL, &data_len, "ID authentication") < 0)
     return -1;
-  }
 
   fprintf(stderr, "ID authentication successful\n");
   return 0;
@@ -233,10 +252,8 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
   }
 
   size_t data_len;
-  if (ra_unpack_pkt(resp, n, NULL, &data_len, NULL) < 0) {
-    warnx("erase failed");
+  if (unpack_with_error(resp, n, NULL, &data_len, "erase") < 0)
     return -1;
-  }
 
   printf("Erase complete\n");
   return 0;
@@ -292,8 +309,7 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
     }
 
     size_t chunk_len;
-    if (ra_unpack_pkt(resp, n, chunk, &chunk_len, NULL) < 0) {
-      warnx("failed to unpack read data");
+    if (unpack_with_error(resp, n, chunk, &chunk_len, "read") < 0) {
       close(fd);
       return -1;
     }
@@ -381,8 +397,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   }
 
   size_t data_len;
-  if (ra_unpack_pkt(resp, n, NULL, &data_len, NULL) < 0) {
-    warnx("write init failed");
+  if (unpack_with_error(resp, n, NULL, &data_len, "write init") < 0) {
     close(fd);
     return -1;
   }
@@ -423,8 +438,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
       return -1;
     }
 
-    if (ra_unpack_pkt(resp, n, NULL, &data_len, NULL) < 0) {
-      warnx("write chunk failed");
+    if (unpack_with_error(resp, n, NULL, &data_len, "write") < 0) {
       close(fd);
       return -1;
     }
