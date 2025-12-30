@@ -19,7 +19,7 @@
 set -e
 
 REPO="vjardin/radfu"
-VERSION=""
+RADFU_VERSION=""
 USE_CI=false
 IS_ROOT=false
 INSTALL_DIR=""
@@ -99,7 +99,7 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --version)
-            VERSION="$2"
+            RADFU_VERSION="$2"
             shift 2
             ;;
         --ci)
@@ -322,11 +322,11 @@ detect_package_manager
 if [ "$USE_CI" = true ]; then
     install_from_ci
 else
-    if [ -z "$VERSION" ]; then
-        VERSION=$(get_latest_version)
-        info "Latest version: $VERSION"
+    if [ -z "$RADFU_VERSION" ]; then
+        RADFU_VERSION=$(get_latest_version)
+        info "Latest version: $RADFU_VERSION"
     fi
-    install_from_release "$VERSION"
+    install_from_release "$RADFU_VERSION"
 fi
 
 # Update shell configs for non-root installation
