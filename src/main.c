@@ -43,6 +43,7 @@ usage(int status) {
       "  -i, --id <hex>       ID code for authentication (32 hex chars)\n"
       "  -e, --erase-all      Erase all areas using ALeRASE magic ID\n"
       "  -v, --verify         Verify after write\n"
+      "  -U, --usb-reset    USB reset before connecting (Linux only)\n"
       "  -h, --help           Show this help message\n"
       "  -V, --version        Show version\n"
       "\n"
@@ -126,6 +127,7 @@ static const struct option longopts[] = {
   { "id",        required_argument, NULL, 'i' },
   { "erase-all", no_argument,       NULL, 'e' },
   { "verify",    no_argument,       NULL, 'v' },
+  { "usb-reset", no_argument,       NULL, 'U' },
   { "help",      no_argument,       NULL, 'h' },
   { "version",   no_argument,       NULL, 'V' },
   { NULL,        0,                 NULL, 0   }
@@ -143,10 +145,11 @@ main(int argc, char *argv[]) {
   bool verify = false;
   bool use_auth = false;
   bool erase_all = false;
+  bool usb_reset = false;
   enum command cmd = CMD_NONE;
   int opt;
 
-  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evhV", longopts, NULL)) != -1) {
+  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evUhV", longopts, NULL)) != -1) {
     switch (opt) {
     case 'p':
       port = optarg;
@@ -168,6 +171,9 @@ main(int argc, char *argv[]) {
       break;
     case 'v':
       verify = true;
+      break;
+    case 'U':
+      usb_reset = true;
       break;
     case 'h':
       usage(EXIT_SUCCESS);
@@ -224,6 +230,12 @@ main(int argc, char *argv[]) {
   ra_device_t dev;
   ra_dev_init(&dev);
 
+  /* Perform USB power reset if requested */
+  if (usb_reset) {
+    if (ra_usb_reset() < 0)
+      errx(EXIT_FAILURE, "USB power reset failed");
+  }
+
   if (ra_open(&dev, port) < 0)
     errx(EXIT_FAILURE, "failed to connect to device");
 
@@ -264,14 +276,12 @@ main(int argc, char *argv[]) {
   case CMD_ERASE:
     ret = ra_erase(&dev, address, size);
     break;
-  case CMD_OSIS:
-    {
-      osis_t osis;
-      ret = ra_osis_read(&dev, &osis);
-      if (ret == 0)
-        ra_osis_print(&osis);
-    }
-    break;
+  case CMD_OSIS: {
+    osis_t osis;
+    ret = ra_osis_read(&dev, &osis);
+    if (ret == 0)
+      ra_osis_print(&osis);
+  } break;
   default:
     break;
   }

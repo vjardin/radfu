@@ -78,6 +78,7 @@ Commands:
   read  <file>         Read flash memory to file
   write <file>         Write file to flash memory
   erase                Erase flash sectors
+  osis                 Show OSIS (ID code protection) status
 
 Options:
   -p, --port <dev>     Serial port (auto-detect if omitted)
@@ -87,6 +88,7 @@ Options:
   -i, --id <hex>       ID code for authentication (32 hex chars)
   -e, --erase-all      Erase all areas using ALeRASE magic ID
   -v, --verify         Verify after write
+  -U, --usb-reset      USB reset before connecting (Linux only)
   -h, --help           Show this help message
   -V, --version        Show version
 
@@ -183,9 +185,10 @@ srec_cat zephyr.hex -intel osis.hex -intel -o combined.hex -intel
 
 ## Supported Devices
 
-- RA4 Series - Cortex-M4/M23 (tested)
-- RA2 Series - Cortex-M23 (should work)
-- RA6 Series - Cortex-M33 (should work, accepts 0xC6 boot code)
+- RA4M2 - Cortex-M33 (tested on EK-RA4M2, boot code 0xC6)
+- RA4 Series - Cortex-M4/M23 (should work, boot code 0xC3)
+- RA2 Series - Cortex-M23 (should work, boot code 0xC3)
+- RA6 Series - Cortex-M33 (should work, boot code 0xC6)
 
 ## DFU Mode on EK-RA4M2
 
@@ -248,6 +251,22 @@ Check device detection:
 ```sh
 lsusb | grep -i renesas
 ls /dev/ttyACM*
+```
+
+### USB Reset for Reconnection
+
+The bootloader only accepts connections immediately after a hardware reset. To reconnect
+without unplugging the USB cable, use the --usb-reset option which performs a USB bus
+reset and prompts for the RESET button press:
+
+```sh
+radfu --usb-reset info
+```
+
+This requires write access to sysfs. Grant the CAP_DAC_OVERRIDE capability:
+
+```sh
+sudo setcap cap_dac_override+ep $(which radfu)
 ```
 
 ### Board Documentation

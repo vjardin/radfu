@@ -80,4 +80,12 @@ int ra_set_baudrate(ra_device_t *dev, uint32_t baudrate);
 int ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len);
 void ra_print_usb_info(const char *tty_name);
 
+/*
+ * USB device power reset (unbind/rebind)
+ * Linux: uses sysfs authorized file
+ * macOS: not supported (returns -1)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_usb_reset(void);
+
 #endif /* RACONNECT_H */
