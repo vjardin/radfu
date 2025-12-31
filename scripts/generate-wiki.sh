@@ -11,6 +11,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WIKI_DIR="${1:-$PROJECT_DIR/wiki}"
 README="$PROJECT_DIR/README.md"
 MANPAGE="$PROJECT_DIR/build/radfu.1"
+CONTRIBUTING="$PROJECT_DIR/CONTRIBUTING.md"
+LEGAL="$PROJECT_DIR/LEGAL.md"
 
 mkdir -p "$WIKI_DIR"
 
@@ -61,6 +63,30 @@ EOF
 fi
 
 #
+# Contributing.md - Contribution guidelines
+#
+echo "Creating Contributing.md..."
+cat > "$WIKI_DIR/Contributing.md" << 'EOF'
+> **Wiki Navigation:** [[Home]] | [[Man Page]] | [[Legal]] | [[Source]](https://github.com/vjardin/radfu/blob/master/CONTRIBUTING.md)
+
+---
+
+EOF
+cat "$CONTRIBUTING" >> "$WIKI_DIR/Contributing.md"
+
+#
+# Legal.md - Legal information
+#
+echo "Creating Legal.md..."
+cat > "$WIKI_DIR/Legal.md" << 'EOF'
+> **Wiki Navigation:** [[Home]] | [[Man Page]] | [[Contributing]] | [[Source]](https://github.com/vjardin/radfu/blob/master/LEGAL.md)
+
+---
+
+EOF
+cat "$LEGAL" >> "$WIKI_DIR/Legal.md"
+
+#
 # _Sidebar.md - Navigation sidebar
 #
 echo "Creating _Sidebar.md..."
@@ -69,6 +95,8 @@ cat > "$WIKI_DIR/_Sidebar.md" << 'EOF'
 
 - [[Home]]
 - [[Man Page]]
+- [[Contributing]]
+- [[Legal]]
 
 ## Links
 

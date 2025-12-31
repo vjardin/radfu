@@ -6,6 +6,8 @@ on:
     paths:
       - 'README.md'
       - 'radfu.h2m'
+      - 'CONTRIBUTING.md'
+      - 'LEGAL.md'
       - 'scripts/generate-wiki.sh'
   workflow_dispatch:
 
