@@ -79,6 +79,34 @@ set_size_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
   return 0;
 }
 
+/*
+ * Get area type name based on address range
+ */
+static const char *
+get_area_type(uint32_t sad) {
+  if (sad < 0x00100000)
+    return "Code Flash";
+  else if (sad >= 0x08000000 && sad < 0x09000000)
+    return "Data Flash";
+  else if (sad >= 0x01000000 && sad < 0x02000000)
+    return "Config";
+  else
+    return "Unknown";
+}
+
+/*
+ * Format size with appropriate unit (KB/MB)
+ */
+static void
+format_size(uint32_t bytes, char *buf, size_t buflen) {
+  if (bytes >= 1024 * 1024)
+    snprintf(buf, buflen, "%u MB", bytes / (1024 * 1024));
+  else if (bytes >= 1024)
+    snprintf(buf, buflen, "%u KB", bytes / 1024);
+  else
+    snprintf(buf, buflen, "%u bytes", bytes);
+}
+
 int
 ra_get_area_info(ra_device_t *dev, bool print) {
   uint8_t pkt[MAX_PKT_LEN];
@@ -86,6 +114,9 @@ ra_get_area_info(ra_device_t *dev, bool print) {
   uint8_t data[32];
   size_t data_len;
   ssize_t pkt_len, n;
+  uint32_t code_flash_size = 0;
+  uint32_t data_flash_size = 0;
+  uint32_t config_size = 0;
 
   for (int i = 0; i < MAX_AREAS; i++) {
     uint8_t area = (uint8_t)i;
@@ -127,10 +158,51 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     dev->chip_layout[i].ead = ead;
     dev->chip_layout[i].align = eau;
 
+    /* Calculate sizes by area type */
+    uint32_t area_size = (ead >= sad) ? (ead - sad + 1) : 0;
+    if (sad < 0x00100000)
+      code_flash_size += area_size;
+    else if (sad >= 0x08000000 && sad < 0x09000000)
+      data_flash_size += area_size;
+    else if (sad >= 0x01000000 && sad < 0x02000000)
+      config_size += area_size;
+
     if (print) {
-      printf("Area %d: 0x%08x:0x%08x (erase 0x%x, write 0x%x)\n", i, sad, ead, eau, wau);
+      char size_str[32], erase_str[32], write_str[32];
+      format_size(area_size, size_str, sizeof(size_str));
+      if (eau > 0)
+        format_size(eau, erase_str, sizeof(erase_str));
+      else
+        snprintf(erase_str, sizeof(erase_str), "n/a");
+      format_size(wau, write_str, sizeof(write_str));
+      printf("Area %d [%s]: 0x%08x-0x%08x (%s, erase block %s, write block %s)\n",
+          i,
+          get_area_type(sad),
+          sad,
+          ead,
+          size_str,
+          erase_str,
+          write_str);
     }
-    (void)koa; /* KOA is internal area type, not used currently */
+    (void)koa; /* KOA field - reserved for future use */
+  }
+
+  /* Print summary */
+  if (print) {
+    char size_buf[32];
+    printf("Memory:\n");
+    if (code_flash_size > 0) {
+      format_size(code_flash_size, size_buf, sizeof(size_buf));
+      printf("  Code Flash: %s\n", size_buf);
+    }
+    if (data_flash_size > 0) {
+      format_size(data_flash_size, size_buf, sizeof(size_buf));
+      printf("  Data Flash: %s\n", size_buf);
+    }
+    if (config_size > 0) {
+      format_size(config_size, size_buf, sizeof(size_buf));
+      printf("  Config: %s\n", size_buf);
+    }
   }
 
   return 0;
