@@ -46,7 +46,7 @@ read_word(ra_device_t *dev, uint32_t addr, uint32_t *value) {
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  n = ra_recv(dev, resp, 12, 500);
+  n = ra_recv(dev, resp, sizeof(resp), 500);
   if (n < 10) {
     warnx("short response reading OSIS at 0x%08x", addr);
     return -1;
@@ -56,8 +56,7 @@ read_word(ra_device_t *dev, uint32_t addr, uint32_t *value) {
   if (ra_unpack_pkt(resp, n, chunk, &data_len, &cmd) < 0) {
     if (cmd & STATUS_ERR) {
       uint8_t err_code = cmd & 0x7F;
-      warnx("read OSIS 0x%08x: MCU error 0x%02X (%s)",
-          addr, err_code, ra_strerror(err_code));
+      warnx("read OSIS 0x%08x: MCU error 0x%02X (%s)", addr, err_code, ra_strerror(err_code));
     }
     return -1;
   }
@@ -68,8 +67,8 @@ read_word(ra_device_t *dev, uint32_t addr, uint32_t *value) {
   }
 
   /* OSIS is stored little-endian in flash */
-  *value = ((uint32_t)chunk[3] << 24) | ((uint32_t)chunk[2] << 16) |
-           ((uint32_t)chunk[1] << 8) | (uint32_t)chunk[0];
+  *value = ((uint32_t)chunk[3] << 24) | ((uint32_t)chunk[2] << 16) | ((uint32_t)chunk[1] << 8) |
+           (uint32_t)chunk[0];
 
   /* Send ACK to complete read transaction */
   uint8_t ack_data[1] = { 0x00 };
@@ -134,6 +133,6 @@ ra_osis_print(const osis_t *osis) {
       ra_osis_mode_str(osis->mode));
 
   /* Show full 128-bit ID code in hex */
-  printf("  ID Code: %08x%08x%08x%08x\n",
-      osis->word[3], osis->word[2], osis->word[1], osis->word[0]);
+  printf(
+      "  ID Code: %08x%08x%08x%08x\n", osis->word[3], osis->word[2], osis->word[1], osis->word[0]);
 }

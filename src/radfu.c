@@ -96,9 +96,15 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     if (ra_send(dev, pkt, pkt_len) < 0)
       return -1;
 
-    n = ra_recv(dev, resp, 23, 500);
-    if (n < 23) {
-      warnx("short response for area %d", i);
+    n = ra_recv(dev, resp, sizeof(resp), 500);
+    if (n < 7) {
+      warnx("short response for area %d (got %zd bytes)", i, n);
+      if (n > 0) {
+        fprintf(stderr, "  resp: ");
+        for (ssize_t j = 0; j < n; j++)
+          fprintf(stderr, "%02x ", resp[j]);
+        fprintf(stderr, "\n");
+      }
       return -1;
     }
 
@@ -122,8 +128,9 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     dev->chip_layout[i].align = eau;
 
     if (print) {
-      printf("Area %d: 0x%08x:0x%08x (erase 0x%x - write 0x%x)\n", koa, sad, ead, eau, wau);
+      printf("Area %d: 0x%08x:0x%08x (erase 0x%x, write 0x%x)\n", i, sad, ead, eau, wau);
     }
+    (void)koa; /* KOA is internal area type, not used currently */
   }
 
   return 0;
@@ -132,7 +139,7 @@ ra_get_area_info(ra_device_t *dev, bool print) {
 int
 ra_get_dev_info(ra_device_t *dev) {
   uint8_t pkt[MAX_PKT_LEN];
-  uint8_t resp[32];
+  uint8_t resp[64]; /* RA6 includes product name in response */
   ssize_t pkt_len, n;
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
@@ -142,34 +149,76 @@ ra_get_dev_info(ra_device_t *dev) {
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  n = ra_recv(dev, resp, 18, 500);
-  if (n < 18) {
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
     warnx("short response for device info");
     return -1;
   }
 
-  /* Parse signature response */
-  /* Header(4) + SCI(4) + RMB(4) + NOA(1) + TYP(1) + BFV(2) + Footer(2) */
-  uint32_t sci = be_to_uint32(&resp[4]);
-  uint32_t rmb = be_to_uint32(&resp[8]);
-  uint8_t noa = resp[12];
-  uint8_t typ = resp[13];
-  uint16_t bfv = ((uint16_t)resp[14] << 8) | resp[15];
+  /* Get packet length from header */
+  uint16_t resp_len = ((uint16_t)resp[1] << 8) | resp[2];
+  size_t total_len = 4 + (resp_len - 1) + 2; /* header + data + footer */
 
   printf("====================\n");
-  if (typ == 0x02)
-    printf("Chip: RA MCU + RA2/RA4 Series\n");
-  else if (typ == 0x03)
-    printf("Chip: RA MCU + RA6 Series\n");
-  else
-    printf("Unknown MCU type (0x%02x)\n", typ);
 
-  printf("Serial interface speed: %u Hz\n", sci);
-  printf("Recommend max UART baud rate: %u bps\n", rmb);
-  printf("User area in Code flash [%d|%d]\n", noa & 0x1, (noa & 0x02) >> 1);
-  printf("User area in Data flash [%d]\n", (noa & 0x04) >> 2);
-  printf("Config area [%d]\n", (noa & 0x08) >> 3);
-  printf("Boot firmware: version %d.%d\n", bfv >> 8, bfv & 0xFF);
+  if (n >= 18 && total_len == 18) {
+    /* Short format: Header(4) + SCI(4) + RMB(4) + NOA(1) + TYP(1) + BFV(2) + Footer(2) */
+    uint32_t sci = be_to_uint32(&resp[4]);
+    uint32_t rmb = be_to_uint32(&resp[8]);
+    uint8_t noa = resp[12];
+    uint8_t typ = resp[13];
+    uint16_t bfv = ((uint16_t)resp[14] << 8) | resp[15];
+
+    if (typ == 0x02)
+      printf("Chip: RA MCU + RA2/RA4 Series\n");
+    else if (typ == 0x03)
+      printf("Chip: RA MCU + RA6 Series\n");
+    else
+      printf("Unknown MCU type (0x%02x)\n", typ);
+
+    printf("Serial interface speed: %u Hz\n", sci);
+    printf("Recommend max UART baud rate: %u bps\n", rmb);
+    printf("User area in Code flash [%d|%d]\n", noa & 0x1, (noa & 0x02) >> 1);
+    printf("User area in Data flash [%d]\n", (noa & 0x04) >> 2);
+    printf("Config area [%d]\n", (noa & 0x08) >> 3);
+    printf("Boot firmware: version %d.%d\n", bfv >> 8, bfv & 0xFF);
+  } else {
+    /* Extended format (RA4M2, etc.): includes product name */
+    uint32_t sci = be_to_uint32(&resp[4]);
+    printf("Serial interface speed: %u Hz\n", sci);
+
+    /* Extract product name from end of packet (before checksum+ETX) */
+    /* Format: ...TR7F + product_name(13) + SUM + ETX */
+    if (n >= 20) {
+      /* Find "R7F" marker and extract product name */
+      char product[16] = { 0 };
+      for (ssize_t i = n - 20; i < n - 5; i++) {
+        if (resp[i] == 'R' && resp[i + 1] == '7' && resp[i + 2] == 'F') {
+          /* Copy product name (up to 13 chars) */
+          size_t j = 0;
+          for (; j < 13 && i + j < (size_t)(n - 2); j++) {
+            if (resp[i + j] == ' ' || resp[i + j] == 0)
+              break;
+            product[j] = resp[i + j];
+          }
+          product[j] = '\0';
+          break;
+        }
+      }
+      if (product[0]) {
+        printf("Product: %s\n", product);
+        /* Determine series from product name */
+        if (product[3] == 'A' && product[4] == '2')
+          printf("Chip: RA MCU + RA2 Series (Cortex-M23)\n");
+        else if (product[3] == 'A' && product[4] == '4')
+          printf("Chip: RA MCU + RA4 Series (Cortex-M33)\n");
+        else if (product[3] == 'A' && product[4] == '6')
+          printf("Chip: RA MCU + RA6 Series (Cortex-M33)\n");
+        else
+          printf("Chip: RA MCU\n");
+      }
+    }
+  }
 
   return 0;
 }

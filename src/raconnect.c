@@ -23,7 +23,7 @@
 
 #define GENERIC_CODE 0x55
 #define BOOT_CODE_M4 0xC3  /* Cortex-M4/M23 (RA2/RA4 series) */
-#define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA6 series) */
+#define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA4M2/RA6 series) */
 
 /* Forward declarations for static functions */
 static int ra_inquire(ra_device_t *dev);
@@ -39,6 +39,11 @@ ra_dev_init(ra_device_t *dev) {
   dev->timeout_ms = TIMEOUT_MS;
   dev->sel_area = 0;
 }
+
+/* Forward declarations */
+static int ra_sync(ra_device_t *dev);
+static int ra_inquire(ra_device_t *dev);
+static int ra_confirm(ra_device_t *dev);
 
 static int
 set_serial_attrs(int fd, speed_t speed) {
@@ -112,20 +117,22 @@ ra_open(ra_device_t *dev, const char *port) {
     return -1;
   }
 
-  /* Try to establish connection */
-  int status = ra_inquire(dev);
-  if (status < 0) {
+  /* Flush any stale data in buffers */
+  tcflush(dev->fd, TCIOFLUSH);
+
+  /* Establish connection:
+   * 1. Sync with 0x00 bytes until device responds with 0x00
+   * 2. Confirm with 0x55, expect boot code (0xC3 or 0xC6)
+   */
+  if (ra_sync(dev) < 0) {
     close(dev->fd);
     dev->fd = -1;
     return -1;
   }
-
-  if (status == 0) {
-    if (ra_confirm(dev) < 0) {
-      close(dev->fd);
-      dev->fd = -1;
-      return -1;
-    }
+  if (ra_confirm(dev) < 0) {
+    close(dev->fd);
+    dev->fd = -1;
+    return -1;
   }
 
   return 0;
@@ -192,6 +199,27 @@ ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
 }
 
 static int
+ra_sync(ra_device_t *dev) {
+  uint8_t sync = 0x00;
+  uint8_t resp;
+
+  /* Send 0x00 bytes until device responds with 0x00 */
+  for (int i = 0; i < dev->max_tries; i++) {
+    if (write(dev->fd, &sync, 1) != 1)
+      continue;
+
+    ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);
+    if (n == 1 && resp == 0x00) {
+      fprintf(stderr, "Sync OK\n");
+      return 0;
+    }
+  }
+
+  warnx("failed to sync with bootloader");
+  return -1;
+}
+
+static int
 ra_inquire(ra_device_t *dev) {
   uint8_t pkt[MAX_PKT_LEN];
   ssize_t pkt_len;
@@ -208,6 +236,7 @@ ra_inquire(ra_device_t *dev) {
   if (n < 0)
     return -1;
 
+  fprintf(stderr, "inquire: n=%zd, resp=0x%02x\n", n, n > 0 ? resp[0] : 0);
   if (n == 0 || resp[0] == 0x00) {
     /* Not connected yet */
     return 0;
@@ -242,10 +271,17 @@ ra_confirm(ra_device_t *dev) {
         fprintf(stderr, "Boot code 0xC6 (Cortex-M33)\n");
         return 0;
       }
+      if (resp == 0xC5) {
+        fprintf(stderr, "Boot code 0xC5 (Cortex-M85)\n");
+        return 0;
+      }
+      /* Unexpected response */
+      fprintf(stderr, "unexpected response: 0x%02X\n", resp);
+    } else if (n == 0) {
+      fprintf(stderr, "no response (try %d/%d)\n", i + 1, dev->max_tries);
+    } else {
+      warn("read error: retry #%d", i);
     }
-
-    if (n < 0)
-      warn("timeout: retry #%d", i);
   }
 
   warnx("failed to establish connection after %d tries", dev->max_tries);
