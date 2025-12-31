@@ -277,10 +277,10 @@ main(int argc, char *argv[]) {
     ret = ra_erase(&dev, address, size);
     break;
   case CMD_OSIS: {
-    osis_t osis;
-    ret = ra_osis_read(&dev, &osis);
+    osis_status_t status;
+    ret = ra_osis_detect(&dev, &status);
     if (ret == 0)
-      ra_osis_print(&osis);
+      ra_osis_print(&status);
   } break;
   default:
     break;
