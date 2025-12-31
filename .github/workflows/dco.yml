@@ -1,0 +1,19 @@
+# Developer Certificate of Origin (DCO) check
+# Ensures all commits are signed off with: git commit -s
+name: DCO
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  dco:
+    name: DCO Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check DCO sign-off
+        uses: dcoapp/app@v1.0.0

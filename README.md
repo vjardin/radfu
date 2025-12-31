@@ -274,6 +274,15 @@ RADFU is a C rewrite aimed at providing a minimal footprint suitable for embedde
 build systems, and resource-constrained scenarios where a Python runtime may not be available
 or practical.
 
+## Legal Notice
+
+RADFU is implemented using clean-room principles to achieve interoperability with Renesas RA
+microcontrollers. Any reverse engineering involved was limited to what is strictly necessary for
+interoperability and is compliant with EU Directive 2009/24/EC and Article L122-6-1 of the French
+Intellectual Property Code.
+
+No proprietary source code or confidential material is included. See LEGAL.md for details.
+
 ## License
 
 AGPL-3.0-or-later
