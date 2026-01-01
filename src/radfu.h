@@ -58,4 +58,13 @@ int ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, 
  */
 int ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out);
 
+/*
+ * Query Device Lifecycle Management (DLM) state
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ * dlm_out: pointer to store the DLM state code (may be NULL)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out);
+
 #endif /* RADFU_H */

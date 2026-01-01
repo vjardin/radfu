@@ -34,6 +34,7 @@ usage(int status) {
       "  write <file>   Write file to flash memory\n"
       "  erase          Erase flash sectors\n"
       "  crc            Calculate CRC-32 of flash region\n"
+      "  dlm            Show Device Lifecycle Management state\n"
       "  osis           Show OSIS (ID code protection) status\n"
       "\n"
       "Options:\n"
@@ -119,6 +120,7 @@ enum command {
   CMD_WRITE,
   CMD_ERASE,
   CMD_CRC,
+  CMD_DLM,
   CMD_OSIS,
 };
 
@@ -226,6 +228,8 @@ main(int argc, char *argv[]) {
     cmd = CMD_ERASE;
   } else if (strcmp(command, "crc") == 0) {
     cmd = CMD_CRC;
+  } else if (strcmp(command, "dlm") == 0) {
+    cmd = CMD_DLM;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
   } else {
@@ -286,6 +290,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_CRC:
     ret = ra_crc(&dev, address, size, NULL);
+    break;
+  case CMD_DLM:
+    ret = ra_get_dlm(&dev, NULL);
     break;
   case CMD_OSIS: {
     osis_status_t status;

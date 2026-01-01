@@ -840,3 +840,77 @@ ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out) {
 
   return 0;
 }
+
+/* DLM state code definitions */
+static const struct {
+  uint8_t code;
+  const char *name;
+  const char *desc;
+} dlm_states[] = {
+  { 0x01, "CM",       "Chip Manufacturing"                         },
+  { 0x02, "SSD",      "Secure Software Development"                },
+  { 0x03, "NSECSD",   "Non-Secure Software Development"            },
+  { 0x04, "DPL",      "Deployed"                                   },
+  { 0x05, "LCK_DBG",  "Locked Debug"                               },
+  { 0x06, "LCK_BOOT", "Locked Boot Interface"                      },
+  { 0x07, "RMA_REQ",  "Return Material Authorization Request"      },
+  { 0x08, "RMA_ACK",  "Return Material Authorization Acknowledged" },
+  { 0,    NULL,       NULL                                         },
+};
+
+static const char *
+dlm_state_name(uint8_t code) {
+  for (size_t i = 0; dlm_states[i].name != NULL; i++) {
+    if (dlm_states[i].code == code)
+      return dlm_states[i].name;
+  }
+  return "UNKNOWN";
+}
+
+static const char *
+dlm_state_desc(uint8_t code) {
+  for (size_t i = 0; dlm_states[i].name != NULL; i++) {
+    if (dlm_states[i].code == code)
+      return dlm_states[i].desc;
+  }
+  return "Unknown state";
+}
+
+int
+ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[16];
+  uint8_t resp_data[8];
+  ssize_t pkt_len, n;
+
+  /* DLM state request command has no data payload */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for DLM state request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "DLM state") < 0)
+    return -1;
+
+  if (data_len < 1) {
+    warnx("invalid DLM response length: %zu", data_len);
+    return -1;
+  }
+
+  uint8_t dlm = resp_data[0];
+  printf("DLM State: 0x%02X (%s: %s)\n", dlm, dlm_state_name(dlm), dlm_state_desc(dlm));
+
+  if (dlm_out != NULL)
+    *dlm_out = dlm;
+
+  return 0;
+}
