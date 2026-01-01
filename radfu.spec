@@ -1,5 +1,5 @@
 Name:           radfu
-Version:        0.0.3
+Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Renesas RA Device Firmware Update tool
 

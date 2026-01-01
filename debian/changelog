@@ -1,3 +1,15 @@
+radfu (0.1.0-1) unstable; urgency=low
+
+  * Add DLM state transit command
+  * Add initialize command (factory reset)
+  * Add boundary setting command
+  * Add parameter setting command (one-way lockdown)
+  * Add key management commands (KEY, KEY_VFY, UKEY, UKEY_VFY)
+  * Add boot code detection delay for reliable connection
+  * Complete implementation of all 20 RA4M2 bootloader commands
+
+ -- Vincent Jardin <vjardin@free.fr>  Wed, 01 Jan 2025 16:00:00 +0100
+
 radfu (0.0.3-1) unstable; urgency=low
 
   * Add macOS support
