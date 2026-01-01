@@ -105,4 +105,16 @@ int ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out);
  */
 int ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out);
 
+/*
+ * Initialize device (factory reset)
+ * Clears User area, Data area, Config area, boundary settings, and key index.
+ * DLM state transitions to SSD after completion.
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ * Requires: initialization command enabled (PARAM_ID_INIT == 0x07)
+ * Can only be executed from SSD, NSECSD, or DPL states (not CM)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_initialize(ra_device_t *dev);
+
 #endif /* RADFU_H */

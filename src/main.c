@@ -37,6 +37,7 @@ usage(int status) {
       "  dlm            Show Device Lifecycle Management state\n"
       "  boundary       Show secure/non-secure boundary settings\n"
       "  param          Show device parameter (initialization command)\n"
+      "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
       "\n"
       "Options:\n"
@@ -125,6 +126,7 @@ enum command {
   CMD_DLM,
   CMD_BOUNDARY,
   CMD_PARAM,
+  CMD_INIT,
   CMD_OSIS,
 };
 
@@ -238,6 +240,8 @@ main(int argc, char *argv[]) {
     cmd = CMD_BOUNDARY;
   } else if (strcmp(command, "param") == 0) {
     cmd = CMD_PARAM;
+  } else if (strcmp(command, "init") == 0) {
+    cmd = CMD_INIT;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
   } else {
@@ -307,6 +311,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_PARAM:
     ret = ra_get_param(&dev, PARAM_ID_INIT, NULL);
+    break;
+  case CMD_INIT:
+    ret = ra_initialize(&dev);
     break;
   case CMD_OSIS: {
     osis_status_t status;

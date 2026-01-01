@@ -23,6 +23,7 @@
 #define DLM_CMD 0x2C /* DLM state request */
 #define IDA_CMD 0x30 /* ID authentication */
 #define BND_CMD 0x4F /* Boundary request */
+#define INI_CMD 0x50 /* Initialize command */
 #define PRM_CMD 0x52 /* Parameter request */
 #define BAU_CMD 0x34 /* Baud rate setting */
 #define SIG_CMD 0x3A /* Get device signature */

@@ -1034,3 +1034,85 @@ ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out) {
 
   return 0;
 }
+
+/* DLM state codes for initialize command */
+#define DLM_CM 0x01
+#define DLM_SSD 0x02
+#define DLM_NSECSD 0x03
+#define DLM_DPL 0x04
+
+int
+ra_initialize(ra_device_t *dev) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[2];
+  ssize_t pkt_len, n;
+
+  /* First, get current DLM state */
+  uint8_t current_dlm;
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for DLM state request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "DLM state") < 0)
+    return -1;
+
+  if (data_len < 1) {
+    warnx("invalid DLM response length: %zu", data_len);
+    return -1;
+  }
+
+  current_dlm = resp_data[0];
+
+  /* Check if we can execute initialize from current state */
+  if (current_dlm == DLM_CM) {
+    warnx("cannot initialize from CM state (0x01)");
+    warnx("initialize command requires SSD, NSECSD, or DPL state");
+    return -1;
+  }
+
+  if (current_dlm != DLM_SSD && current_dlm != DLM_NSECSD && current_dlm != DLM_DPL) {
+    warnx("cannot initialize from DLM state 0x%02X", current_dlm);
+    warnx("initialize command requires SSD (0x02), NSECSD (0x03), or DPL (0x04) state");
+    return -1;
+  }
+
+  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, dlm_state_name(current_dlm));
+  printf("Initializing device (factory reset to SSD state)...\n");
+  printf("WARNING: This will erase all flash areas and reset boundaries!\n");
+
+  /* Send initialize command: SDLM = current state, DDLM = SSD */
+  data[0] = current_dlm; /* SDLM: source DLM state */
+  data[1] = DLM_SSD;     /* DDLM: destination DLM state (always SSD) */
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), INI_CMD, data, 2, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Initialize can take a long time due to flash erase */
+  n = ra_recv(dev, resp, sizeof(resp), 30000);
+  if (n < 7) {
+    warnx("short response for initialize command");
+    return -1;
+  }
+
+  if (unpack_with_error(resp, n, resp_data, &data_len, "initialize") < 0)
+    return -1;
+
+  printf("Initialize complete - device reset to SSD state\n");
+  return 0;
+}
