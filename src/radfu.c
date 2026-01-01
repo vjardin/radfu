@@ -914,3 +914,71 @@ ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out) {
 
   return 0;
 }
+
+/*
+ * Convert big-endian byte array to uint16_t
+ */
+static inline uint16_t
+be_to_uint16(const uint8_t *buf) {
+  return ((uint16_t)buf[0] << 8) | (uint16_t)buf[1];
+}
+
+int
+ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  /* Boundary request command has no data payload */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), BND_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for boundary request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "boundary") < 0)
+    return -1;
+
+  /* Response: CFS1(2) + CFS2(2) + DFS1(2) + SRS1(2) + SRS2(2) = 10 bytes */
+  if (data_len < 10) {
+    warnx("invalid boundary response length: %zu", data_len);
+    return -1;
+  }
+
+  uint16_t cfs1 = be_to_uint16(&resp_data[0]);
+  uint16_t cfs2 = be_to_uint16(&resp_data[2]);
+  uint16_t dfs = be_to_uint16(&resp_data[4]);
+  uint16_t srs1 = be_to_uint16(&resp_data[6]);
+  uint16_t srs2 = be_to_uint16(&resp_data[8]);
+
+  printf("Secure/Non-secure Boundary Settings:\n");
+  printf("  Code Flash secure (without NSC): %u KB\n", cfs1);
+  printf("  Code Flash secure (total):       %u KB\n", cfs2);
+  printf("  Data Flash secure:               %u KB\n", dfs);
+  printf("  SRAM secure (without NSC):       %u KB\n", srs1);
+  printf("  SRAM secure (total):             %u KB\n", srs2);
+
+  if (cfs2 > cfs1)
+    printf("  Code Flash NSC region:           %u KB\n", cfs2 - cfs1);
+  if (srs2 > srs1)
+    printf("  SRAM NSC region:                 %u KB\n", srs2 - srs1);
+
+  if (bnd_out != NULL) {
+    bnd_out->cfs1 = cfs1;
+    bnd_out->cfs2 = cfs2;
+    bnd_out->dfs = dfs;
+    bnd_out->srs1 = srs1;
+    bnd_out->srs2 = srs2;
+  }
+
+  return 0;
+}

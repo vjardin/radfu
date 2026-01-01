@@ -67,4 +67,25 @@ int ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out);
  */
 int ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out);
 
+/*
+ * Secure/Non-secure boundary settings
+ * All sizes are in KB
+ */
+typedef struct {
+  uint16_t cfs1; /* Code flash secure region size without NSC */
+  uint16_t cfs2; /* Code flash secure region size */
+  uint16_t dfs;  /* Data flash secure region size */
+  uint16_t srs1; /* SRAM secure region size without NSC */
+  uint16_t srs2; /* SRAM secure region size */
+} ra_boundary_t;
+
+/*
+ * Query secure/non-secure boundary settings
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ * bnd_out: pointer to store the boundary settings (may be NULL)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out);
+
 #endif /* RADFU_H */

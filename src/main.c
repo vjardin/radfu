@@ -35,6 +35,7 @@ usage(int status) {
       "  erase          Erase flash sectors\n"
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
+      "  boundary       Show secure/non-secure boundary settings\n"
       "  osis           Show OSIS (ID code protection) status\n"
       "\n"
       "Options:\n"
@@ -121,6 +122,7 @@ enum command {
   CMD_ERASE,
   CMD_CRC,
   CMD_DLM,
+  CMD_BOUNDARY,
   CMD_OSIS,
 };
 
@@ -230,6 +232,8 @@ main(int argc, char *argv[]) {
     cmd = CMD_CRC;
   } else if (strcmp(command, "dlm") == 0) {
     cmd = CMD_DLM;
+  } else if (strcmp(command, "boundary") == 0) {
+    cmd = CMD_BOUNDARY;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
   } else {
@@ -293,6 +297,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_DLM:
     ret = ra_get_dlm(&dev, NULL);
+    break;
+  case CMD_BOUNDARY:
+    ret = ra_get_boundary(&dev, NULL);
     break;
   case CMD_OSIS: {
     osis_status_t status;
