@@ -113,7 +113,7 @@ set_erase_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *
 }
 
 /*
- * Set boundaries for read operations (no alignment required)
+ * Set boundaries for read operations (requires RAU alignment per spec 6.20)
  */
 static int
 set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
@@ -124,7 +124,14 @@ set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
   }
   dev->sel_area = area;
 
+  uint32_t rau = dev->chip_layout[area].rau;
   uint32_t ead = dev->chip_layout[area].ead;
+
+  if (rau > 0 && start % rau != 0) {
+    warnx("start address 0x%x not aligned on read unit 0x%x", start, rau);
+    return -1;
+  }
+
   uint32_t end = start + size - 1;
 
   if (end <= start && size > 1) {
@@ -135,6 +142,14 @@ set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
   if (end > ead) {
     warnx("size exceeds area boundary (max 0x%x)", ead);
     return -1;
+  }
+
+  /* Align end address to RAU boundary if needed */
+  if (rau > 0 && (end + 1) % rau != 0) {
+    uint32_t aligned_end = ((end / rau) + 1) * rau - 1;
+    if (aligned_end > ead)
+      aligned_end = ead;
+    end = aligned_end;
   }
 
   *end_out = end;
@@ -341,7 +356,6 @@ ra_get_area_info(ra_device_t *dev, bool print) {
           crc_str);
     }
     (void)koa; /* KOA field - reserved for future use */
-    (void)rau; /* RAU field - read alignment, currently unused */
   }
 
   /* Print summary */
