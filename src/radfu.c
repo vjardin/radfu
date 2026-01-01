@@ -982,3 +982,55 @@ ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out) {
 
   return 0;
 }
+
+int
+ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  /* Parameter request command with PMID (1 byte) */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), PRM_CMD, &param_id, 1, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for parameter request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "parameter") < 0)
+    return -1;
+
+  if (data_len < 1) {
+    warnx("invalid parameter response length: %zu", data_len);
+    return -1;
+  }
+
+  uint8_t value = resp_data[0];
+
+  /* Interpret based on parameter ID */
+  if (param_id == PARAM_ID_INIT) {
+    const char *state;
+    if (value == PARAM_INIT_DISABLED)
+      state = "disabled";
+    else if (value == PARAM_INIT_ENABLED)
+      state = "enabled";
+    else
+      state = "unknown";
+    printf("Initialization command: 0x%02X (%s)\n", value, state);
+  } else {
+    printf("Parameter 0x%02X: 0x%02X\n", param_id, value);
+  }
+
+  if (value_out != NULL)
+    *value_out = value;
+
+  return 0;
+}

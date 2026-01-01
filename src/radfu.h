@@ -88,4 +88,21 @@ typedef struct {
  */
 int ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out);
 
+/* Parameter IDs for ra_get_param() */
+#define PARAM_ID_INIT 0x01 /* Initialization enable/disable */
+
+/* Parameter values for PARAM_ID_INIT */
+#define PARAM_INIT_DISABLED 0x00
+#define PARAM_INIT_ENABLED 0x07
+
+/*
+ * Query device parameter
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ * param_id: parameter ID (e.g., PARAM_ID_INIT)
+ * value_out: pointer to store the parameter value (may be NULL)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out);
+
 #endif /* RADFU_H */

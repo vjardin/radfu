@@ -36,6 +36,7 @@ usage(int status) {
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
       "  boundary       Show secure/non-secure boundary settings\n"
+      "  param          Show device parameter (initialization command)\n"
       "  osis           Show OSIS (ID code protection) status\n"
       "\n"
       "Options:\n"
@@ -123,6 +124,7 @@ enum command {
   CMD_CRC,
   CMD_DLM,
   CMD_BOUNDARY,
+  CMD_PARAM,
   CMD_OSIS,
 };
 
@@ -234,6 +236,8 @@ main(int argc, char *argv[]) {
     cmd = CMD_DLM;
   } else if (strcmp(command, "boundary") == 0) {
     cmd = CMD_BOUNDARY;
+  } else if (strcmp(command, "param") == 0) {
+    cmd = CMD_PARAM;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
   } else {
@@ -300,6 +304,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_BOUNDARY:
     ret = ra_get_boundary(&dev, NULL);
+    break;
+  case CMD_PARAM:
+    ret = ra_get_param(&dev, PARAM_ID_INIT, NULL);
     break;
   case CMD_OSIS: {
     osis_status_t status;
