@@ -38,6 +38,7 @@ usage(int status) {
       "  dlm            Show Device Lifecycle Management state\n"
       "  dlm-transit <state>  Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)\n"
       "  boundary       Show secure/non-secure boundary settings\n"
+      "  boundary-set   Set TrustZone boundaries (requires --cfs1/--cfs2/--dfs/--srs1/--srs2)\n"
       "  param          Show device parameter (initialization command)\n"
       "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
@@ -50,7 +51,12 @@ usage(int status) {
       "  -i, --id <hex>       ID code for authentication (32 hex chars)\n"
       "  -e, --erase-all      Erase all areas using ALeRASE magic ID\n"
       "  -v, --verify         Verify after write\n"
-      "  -U, --usb-reset    USB reset before connecting (Linux only)\n"
+      "  -U, --usb-reset      USB reset before connecting (Linux only)\n"
+      "      --cfs1 <KB>      Code flash secure region size without NSC\n"
+      "      --cfs2 <KB>      Code flash secure region size (total)\n"
+      "      --dfs <KB>       Data flash secure region size\n"
+      "      --srs1 <KB>      SRAM secure region size without NSC\n"
+      "      --srs2 <KB>      SRAM secure region size (total)\n"
       "  -h, --help           Show this help message\n"
       "  -V, --version        Show version\n"
       "\n"
@@ -60,7 +66,8 @@ usage(int status) {
       "  radfu write -b 1000000 -a 0x0 -v firmware.bin\n"
       "  radfu erase -a 0x0 -s 0x10000\n"
       "  radfu crc -a 0x0 -s 0x10000\n"
-      "  radfu osis\n");
+      "  radfu osis\n"
+      "  radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0\n");
   exit(status);
 }
 
@@ -128,23 +135,36 @@ enum command {
   CMD_DLM,
   CMD_DLM_TRANSIT,
   CMD_BOUNDARY,
+  CMD_BOUNDARY_SET,
   CMD_PARAM,
   CMD_INIT,
   CMD_OSIS,
 };
 
+/* Long-only options use values >= 256 */
+#define OPT_CFS1 256
+#define OPT_CFS2 257
+#define OPT_DFS 258
+#define OPT_SRS1 259
+#define OPT_SRS2 260
+
 static const struct option longopts[] = {
-  { "port",      required_argument, NULL, 'p' },
-  { "address",   required_argument, NULL, 'a' },
-  { "size",      required_argument, NULL, 's' },
-  { "baudrate",  required_argument, NULL, 'b' },
-  { "id",        required_argument, NULL, 'i' },
-  { "erase-all", no_argument,       NULL, 'e' },
-  { "verify",    no_argument,       NULL, 'v' },
-  { "usb-reset", no_argument,       NULL, 'U' },
-  { "help",      no_argument,       NULL, 'h' },
-  { "version",   no_argument,       NULL, 'V' },
-  { NULL,        0,                 NULL, 0   }
+  { "port",      required_argument, NULL, 'p'      },
+  { "address",   required_argument, NULL, 'a'      },
+  { "size",      required_argument, NULL, 's'      },
+  { "baudrate",  required_argument, NULL, 'b'      },
+  { "id",        required_argument, NULL, 'i'      },
+  { "erase-all", no_argument,       NULL, 'e'      },
+  { "verify",    no_argument,       NULL, 'v'      },
+  { "usb-reset", no_argument,       NULL, 'U'      },
+  { "cfs1",      required_argument, NULL, OPT_CFS1 },
+  { "cfs2",      required_argument, NULL, OPT_CFS2 },
+  { "dfs",       required_argument, NULL, OPT_DFS  },
+  { "srs1",      required_argument, NULL, OPT_SRS1 },
+  { "srs2",      required_argument, NULL, OPT_SRS2 },
+  { "help",      no_argument,       NULL, 'h'      },
+  { "version",   no_argument,       NULL, 'V'      },
+  { NULL,        0,                 NULL, 0        }
 };
 
 int
@@ -161,6 +181,9 @@ main(int argc, char *argv[]) {
   bool erase_all = false;
   bool usb_reset = false;
   uint8_t dest_dlm = 0;
+  ra_boundary_t bnd = { 0 };
+  bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
+  bool bnd_srs1_set = false, bnd_srs2_set = false;
   enum command cmd = CMD_NONE;
   int opt;
 
@@ -189,6 +212,26 @@ main(int argc, char *argv[]) {
       break;
     case 'U':
       usb_reset = true;
+      break;
+    case OPT_CFS1:
+      bnd.cfs1 = (uint16_t)strtoul(optarg, NULL, 10);
+      bnd_cfs1_set = true;
+      break;
+    case OPT_CFS2:
+      bnd.cfs2 = (uint16_t)strtoul(optarg, NULL, 10);
+      bnd_cfs2_set = true;
+      break;
+    case OPT_DFS:
+      bnd.dfs = (uint16_t)strtoul(optarg, NULL, 10);
+      bnd_dfs_set = true;
+      break;
+    case OPT_SRS1:
+      bnd.srs1 = (uint16_t)strtoul(optarg, NULL, 10);
+      bnd_srs1_set = true;
+      break;
+    case OPT_SRS2:
+      bnd.srs2 = (uint16_t)strtoul(optarg, NULL, 10);
+      bnd_srs2_set = true;
       break;
     case 'h':
       usage(EXIT_SUCCESS);
@@ -259,6 +302,10 @@ main(int argc, char *argv[]) {
       errx(EXIT_FAILURE, "unknown DLM state: %s (use ssd/nsecsd/dpl/lck_dbg/lck_boot)", state);
   } else if (strcmp(command, "boundary") == 0) {
     cmd = CMD_BOUNDARY;
+  } else if (strcmp(command, "boundary-set") == 0) {
+    cmd = CMD_BOUNDARY_SET;
+    if (!bnd_cfs1_set || !bnd_cfs2_set || !bnd_dfs_set || !bnd_srs1_set || !bnd_srs2_set)
+      errx(EXIT_FAILURE, "boundary-set requires all options: --cfs1 --cfs2 --dfs --srs1 --srs2");
   } else if (strcmp(command, "param") == 0) {
     cmd = CMD_PARAM;
   } else if (strcmp(command, "init") == 0) {
@@ -332,6 +379,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_BOUNDARY:
     ret = ra_get_boundary(&dev, NULL);
+    break;
+  case CMD_BOUNDARY_SET:
+    ret = ra_set_boundary(&dev, &bnd);
     break;
   case CMD_PARAM:
     ret = ra_get_param(&dev, PARAM_ID_INIT, NULL);

@@ -116,6 +116,24 @@ typedef struct {
  */
 int ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out);
 
+/*
+ * Set secure/non-secure boundary settings
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ *
+ * All sizes are in KB:
+ *   cfs1: Code flash secure region without NSC
+ *   cfs2: Code flash secure region total (32KB alignment)
+ *   dfs:  Data flash secure region
+ *   srs1: SRAM secure region without NSC
+ *   srs2: SRAM secure region total (8KB alignment)
+ *
+ * Constraints: cfs1 <= cfs2, srs1 <= srs2
+ * Settings become effective after device reset.
+ * Returns: 0 on success, -1 on error
+ */
+int ra_set_boundary(ra_device_t *dev, const ra_boundary_t *bnd);
+
 /* Parameter IDs for ra_get_param() */
 #define PARAM_ID_INIT 0x01 /* Initialization enable/disable */
 

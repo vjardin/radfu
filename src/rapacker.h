@@ -23,6 +23,7 @@
 #define DLM_CMD 0x2C         /* DLM state request */
 #define DLM_TRANSIT_CMD 0x71 /* DLM state transit */
 #define IDA_CMD 0x30         /* ID authentication */
+#define BND_SET_CMD 0x4E     /* Boundary setting */
 #define BND_CMD 0x4F         /* Boundary request */
 #define INI_CMD 0x50         /* Initialize command */
 #define PRM_CMD 0x52         /* Parameter request */

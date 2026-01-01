@@ -1061,6 +1061,75 @@ ra_get_boundary(ra_device_t *dev, ra_boundary_t *bnd_out) {
   return 0;
 }
 
+/*
+ * Convert uint16_t to big-endian byte array
+ */
+static inline void
+uint16_to_be(uint16_t val, uint8_t *buf) {
+  buf[0] = (val >> 8) & 0xFF;
+  buf[1] = val & 0xFF;
+}
+
+int
+ra_set_boundary(ra_device_t *dev, const ra_boundary_t *bnd) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[10];
+  ssize_t pkt_len, n;
+
+  /* Validate constraints */
+  if (bnd->cfs1 > bnd->cfs2) {
+    warnx("invalid boundary: CFS1 (%u KB) > CFS2 (%u KB)", bnd->cfs1, bnd->cfs2);
+    return -1;
+  }
+  if (bnd->srs1 > bnd->srs2) {
+    warnx("invalid boundary: SRS1 (%u KB) > SRS2 (%u KB)", bnd->srs1, bnd->srs2);
+    return -1;
+  }
+
+  printf("Setting TrustZone boundaries:\n");
+  printf("  Code Flash secure (without NSC): %u KB\n", bnd->cfs1);
+  printf("  Code Flash secure (total):       %u KB\n", bnd->cfs2);
+  printf("  Data Flash secure:               %u KB\n", bnd->dfs);
+  printf("  SRAM secure (without NSC):       %u KB\n", bnd->srs1);
+  printf("  SRAM secure (total):             %u KB\n", bnd->srs2);
+
+  if (bnd->cfs2 > bnd->cfs1)
+    printf("  Code Flash NSC region:           %u KB\n", bnd->cfs2 - bnd->cfs1);
+  if (bnd->srs2 > bnd->srs1)
+    printf("  SRAM NSC region:                 %u KB\n", bnd->srs2 - bnd->srs1);
+
+  /* Pack boundary data: CFS1(2) + CFS2(2) + DFS(2) + SRS1(2) + SRS2(2) = 10 bytes */
+  uint16_to_be(bnd->cfs1, &data[0]);
+  uint16_to_be(bnd->cfs2, &data[2]);
+  uint16_to_be(bnd->dfs, &data[4]);
+  uint16_to_be(bnd->srs1, &data[6]);
+  uint16_to_be(bnd->srs2, &data[8]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), BND_SET_CMD, data, 10, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Boundary setting involves flash writes */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for boundary setting");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "boundary setting") < 0)
+    return -1;
+
+  printf("Boundary settings stored successfully\n");
+  printf("Note: Settings become effective after device reset\n");
+  return 0;
+}
+
 int
 ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out) {
   uint8_t pkt[MAX_PKT_LEN];
