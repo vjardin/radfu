@@ -402,8 +402,15 @@ main(int argc, char *argv[]) {
   switch (cmd) {
   case CMD_INFO:
     ret = ra_get_dev_info(&dev);
-    if (ret == 0)
+    if (ret == 0) {
+      /* Show DLM state */
+      uint8_t dlm_state;
+      if (ra_get_dlm(&dev, &dlm_state) == 0) {
+        printf("DLM State:          %s (0x%02X)\n", ra_dlm_state_name(dlm_state), dlm_state);
+      }
+      printf("\n");
       ra_get_area_info(&dev, true);
+    }
     break;
   case CMD_READ:
     ret = ra_read(&dev, file, address, size);

@@ -24,6 +24,7 @@
 #define MAX_TRANSFER_SIZE (2048 + 6)
 
 typedef struct {
+  uint8_t koa;  /* Kind of area (spec 6.16.2.2) */
   uint32_t sad; /* Start address */
   uint32_t ead; /* End address */
   uint32_t eau; /* Erase alignment unit */

@@ -67,6 +67,11 @@ int ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out);
  */
 int ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out);
 
+/*
+ * Get DLM state name string
+ */
+const char *ra_dlm_state_name(uint8_t code);
+
 /* DLM state codes */
 #define DLM_STATE_CM 0x01       /* Chip Manufacturing */
 #define DLM_STATE_SSD 0x02      /* Secure Software Development */
