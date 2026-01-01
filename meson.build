@@ -76,4 +76,33 @@ if cmocka.found()
     'src/rapacker.c',
     dependencies : cmocka)
   test('rapacker', test_rapacker)
+
+  test_radfu = executable('test_radfu',
+    'tests/test_radfu.c',
+    'src/radfu.c',
+    'src/rapacker.c',
+    'src/raconnect.c',
+    'src/progress.c',
+    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    c_args : ['-DTESTING'],
+    dependencies : [cmocka] + deps)
+  test('radfu', test_radfu)
+
+  test_protocol = executable('test_protocol',
+    'tests/test_protocol.c',
+    'tests/mock/ramock.c',
+    'src/rapacker.c',
+    'src/raconnect.c',
+    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    dependencies : [cmocka] + deps)
+  test('protocol', test_protocol)
+
+  test_raosis = executable('test_raosis',
+    'tests/test_raosis.c',
+    'src/raosis.c',
+    'src/rapacker.c',
+    'src/raconnect.c',
+    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    dependencies : [cmocka] + deps)
+  test('raosis', test_raosis)
 endif

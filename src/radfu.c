@@ -12,6 +12,13 @@
 #include "rapacker.h"
 #include "progress.h"
 
+/* Make static functions visible for testing */
+#ifdef TESTING
+#define STATIC
+#else
+#define STATIC static
+#endif
+
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -56,7 +63,7 @@ unpack_with_error(
  * Find area index containing the given address
  * Returns: area index (0-3) on success, -1 if not found
  */
-static int
+STATIC int
 find_area_for_address(ra_device_t *dev, uint32_t addr) {
   for (int i = 0; i < MAX_AREAS; i++) {
     if (dev->chip_layout[i].sad == 0 && dev->chip_layout[i].ead == 0)
@@ -70,7 +77,7 @@ find_area_for_address(ra_device_t *dev, uint32_t addr) {
 /*
  * Set boundaries for erase operations (requires EAU alignment)
  */
-static int
+STATIC int
 set_erase_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
   int area = find_area_for_address(dev, start);
   if (area < 0) {
@@ -115,7 +122,7 @@ set_erase_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *
 /*
  * Set boundaries for read operations (requires RAU alignment per spec 6.20)
  */
-static int
+STATIC int
 set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
   int area = find_area_for_address(dev, start);
   if (area < 0) {
@@ -159,7 +166,7 @@ set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
 /*
  * Set boundaries for write operations (requires WAU alignment)
  */
-static int
+STATIC int
 set_write_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
   int area = find_area_for_address(dev, start);
   if (area < 0) {
@@ -201,7 +208,7 @@ set_write_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *
 /*
  * Set boundaries for CRC operations (requires CAU alignment)
  */
-static int
+STATIC int
 set_crc_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
   int area = find_area_for_address(dev, start);
   if (area < 0) {
@@ -243,7 +250,7 @@ set_crc_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *en
 /*
  * Get area type name based on address range
  */
-static const char *
+STATIC const char *
 get_area_type(uint32_t sad) {
   if (sad < 0x00100000)
     return "Code Flash";
@@ -256,9 +263,45 @@ get_area_type(uint32_t sad) {
 }
 
 /*
+ * Get area type from KOA (Kind of Area) field per spec 6.16.2.2
+ * KOA format: 0xTN where T=type (0=User/Code, 1=Data, 2=Config), N=area index
+ */
+STATIC const char *
+get_area_type_koa(uint8_t koa) {
+  uint8_t type = (koa >> 4) & 0x0F;
+  switch (type) {
+  case 0x0:
+    return "User/Code";
+  case 0x1:
+    return "Data";
+  case 0x2:
+    return "Config";
+  default:
+    return "Unknown";
+  }
+}
+
+/*
+ * Get device group name from TYP field per spec 6.15.2.2
+ */
+STATIC const char *
+get_device_group(uint8_t typ) {
+  switch (typ) {
+  case 0x01:
+    return "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)";
+  case 0x02:
+    return "GrpC (RA6T2)";
+  case 0x05:
+    return "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)";
+  default:
+    return "Unknown";
+  }
+}
+
+/*
  * Format size with appropriate unit (KB/MB)
  */
-static void
+STATIC void
 format_size(uint32_t bytes, char *buf, size_t buflen) {
   if (bytes >= 1024 * 1024)
     snprintf(buf, buflen, "%u MB", bytes / (1024 * 1024));
@@ -317,6 +360,7 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     uint32_t rau = be_to_uint32(&data[17]);
     uint32_t cau = be_to_uint32(&data[21]);
 
+    dev->chip_layout[i].koa = koa;
     dev->chip_layout[i].sad = sad;
     dev->chip_layout[i].ead = ead;
     dev->chip_layout[i].eau = eau;
@@ -334,28 +378,28 @@ ra_get_area_info(ra_device_t *dev, bool print) {
       config_size += area_size;
 
     if (print) {
-      char size_str[32], erase_str[32], write_str[32], crc_str[32];
+      char size_str[32], erase_str[32], write_str[32], read_str[32], crc_str[32];
       format_size(area_size, size_str, sizeof(size_str));
       if (eau > 0)
         format_size(eau, erase_str, sizeof(erase_str));
       else
         snprintf(erase_str, sizeof(erase_str), "n/a");
       format_size(wau, write_str, sizeof(write_str));
+      if (rau > 0)
+        format_size(rau, read_str, sizeof(read_str));
+      else
+        snprintf(read_str, sizeof(read_str), "n/a");
       if (cau > 0)
         format_size(cau, crc_str, sizeof(crc_str));
       else
         snprintf(crc_str, sizeof(crc_str), "n/a");
-      printf("Area %d [%s]: 0x%08x-0x%08x (%s, erase %s, write %s, crc %s)\n",
-          i,
-          get_area_type(sad),
-          sad,
-          ead,
-          size_str,
-          erase_str,
-          write_str,
-          crc_str);
+      /* Use KOA for area type (spec 6.16.2.2), fallback to address-based */
+      const char *area_type = (koa != 0) ? get_area_type_koa(koa) : get_area_type(sad);
+      printf("Area %d [%s] (KOA=0x%02X): 0x%08X - 0x%08X\n",
+          i, area_type, koa, sad, ead);
+      printf("       Size: %-8s  Erase: %-8s  Write: %-8s  Read: %-8s  CRC: %s\n",
+          size_str, erase_str, write_str, read_str, crc_str);
     }
-    (void)koa; /* KOA field - reserved for future use */
   }
 
   /* Print summary */
@@ -382,7 +426,9 @@ ra_get_area_info(ra_device_t *dev, bool print) {
 int
 ra_get_dev_info(ra_device_t *dev) {
   uint8_t pkt[MAX_PKT_LEN];
-  uint8_t resp[64]; /* RA6 includes product name in response */
+  uint8_t resp[64]; /* Signature response can be up to 47 bytes */
+  uint8_t data[64];
+  size_t data_len;
   ssize_t pkt_len, n;
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
@@ -398,70 +444,109 @@ ra_get_dev_info(ra_device_t *dev) {
     return -1;
   }
 
-  /* Get packet length from header */
-  uint16_t resp_len = ((uint16_t)resp[1] << 8) | resp[2];
-  size_t total_len = 4 + (resp_len - 1) + 2; /* header + data + footer */
+  if (unpack_with_error(resp, n, data, &data_len, "signature") < 0)
+    return -1;
 
-  printf("====================\n");
+  printf("==================== Device Information ====================\n");
 
-  if (n >= 18 && total_len == 18) {
-    /* Short format: Header(4) + SCI(4) + RMB(4) + NOA(1) + TYP(1) + BFV(2) + Footer(2) */
-    uint32_t sci = be_to_uint32(&resp[4]);
-    uint32_t rmb = be_to_uint32(&resp[8]);
-    uint8_t noa = resp[12];
-    uint8_t typ = resp[13];
-    uint16_t bfv = ((uint16_t)resp[14] << 8) | resp[15];
+  /*
+   * Signature response format per spec 6.15.2.2:
+   * - RMB (4 bytes): Recommended maximum UART baudrate [bps]
+   * - NOA (1 byte): Number of accessible areas
+   * - TYP (1 byte): Type code (device group)
+   * - BFV (3 bytes): Boot firmware version (Major.Minor.Build)
+   * - DID (16 bytes): Device unique ID
+   * - PTN (16 bytes): Product type name
+   * Total: 41 bytes
+   */
 
-    if (typ == 0x02)
-      printf("Chip: RA MCU + RA2/RA4 Series\n");
-    else if (typ == 0x03)
-      printf("Chip: RA MCU + RA6 Series\n");
-    else
-      printf("Unknown MCU type (0x%02x)\n", typ);
+  if (data_len >= 9) {
+    /* Parse fields available in all formats */
+    uint32_t rmb = be_to_uint32(&data[0]);
+    uint8_t noa = data[4];
+    uint8_t typ = data[5];
+    uint8_t bfv_major = data[6];
+    uint8_t bfv_minor = data[7];
+    uint8_t bfv_build = data[8];
 
-    printf("Serial interface speed: %u Hz\n", sci);
-    printf("Recommend max UART baud rate: %u bps\n", rmb);
-    printf("User area in Code flash [%d|%d]\n", noa & 0x1, (noa & 0x02) >> 1);
-    printf("User area in Data flash [%d]\n", (noa & 0x04) >> 2);
-    printf("Config area [%d]\n", (noa & 0x08) >> 3);
-    printf("Boot firmware: version %d.%d\n", bfv >> 8, bfv & 0xFF);
-  } else {
-    /* Extended format (RA4M2, etc.): includes product name */
-    uint32_t sci = be_to_uint32(&resp[4]);
-    printf("Serial interface speed: %u Hz\n", sci);
+    printf("Device Group:       %s\n", get_device_group(typ));
+    printf("Boot Firmware:      v%d.%d.%d\n", bfv_major, bfv_minor, bfv_build);
+    printf("Max UART Baudrate:  %u bps\n", rmb);
+    printf("Number of Areas:    %d\n", noa);
 
-    /* Extract product name from end of packet (before checksum+ETX) */
-    /* Format: ...TR7F + product_name(13) + SUM + ETX */
-    if (n >= 20) {
-      /* Find "R7F" marker and extract product name */
-      char product[16] = { 0 };
-      for (ssize_t i = n - 20; i < n - 5; i++) {
-        if (resp[i] == 'R' && resp[i + 1] == '7' && resp[i + 2] == 'F') {
-          /* Copy product name (up to 13 chars) */
-          size_t j = 0;
-          for (; j < 13 && i + j < (size_t)(n - 2); j++) {
-            if (resp[i + j] == ' ' || resp[i + j] == 0)
-              break;
-            product[j] = resp[i + j];
-          }
-          product[j] = '\0';
+    /* Parse Device ID if available (16 bytes starting at offset 9) */
+    if (data_len >= 25) {
+      printf("Device ID:          ");
+      for (int i = 0; i < 16; i++)
+        printf("%02X", data[9 + i]);
+      printf("\n");
+
+      /* Decode DID per spec 6.15.2.2:
+       * - Wafer Fab (2 bytes): ASCII chars (e.g., "TT")
+       * - Date info (packed)
+       * - CRC16
+       * - Lot Number (6 chars)
+       * - Wafer Number (1 byte)
+       * - X/Y address
+       */
+      char wafer_fab[3] = { data[9], data[10], '\0' };
+      /* Year is in bits [7:4] of byte 11, month in bits [3:0], etc. */
+      uint8_t year = (data[11] >> 4) & 0x0F;
+      uint8_t month = data[11] & 0x0F;
+      uint8_t day = data[12];
+      uint16_t crc16 = ((uint16_t)data[13] << 8) | data[14];
+      char lot[7] = { data[15], data[16], data[17], data[18], data[19], data[20], '\0' };
+      uint8_t wafer_num = data[21];
+      uint8_t x_addr = data[22];
+      uint8_t y_addr = data[23];
+
+      printf("  Wafer Fab:        %s\n", wafer_fab);
+      printf("  Manufacturing:    20%02d-%02d-%02d\n", year + 10, month, day);
+      printf("  CRC16:            0x%04X\n", crc16);
+      printf("  Lot Number:       %s\n", lot);
+      printf("  Wafer/X/Y:        %d / %d / %d\n", wafer_num, x_addr, y_addr);
+    }
+
+    /* Parse Product Type Name if available (16 bytes starting at offset 25) */
+    if (data_len >= 41) {
+      char product[17] = { 0 };
+      memcpy(product, &data[25], 16);
+      /* Trim trailing spaces */
+      for (int i = 15; i >= 0 && product[i] == ' '; i--)
+        product[i] = '\0';
+
+      printf("Product Name:       %s\n", product);
+
+      /* Determine CPU core from product name (R7FAxxxx) */
+      if (product[0] == 'R' && product[1] == '7' && product[2] == 'F' && product[3] == 'A') {
+        char series = product[4];
+        switch (series) {
+        case '2':
+          printf("CPU Core:           ARM Cortex-M23\n");
           break;
+        case '4':
+          printf("CPU Core:           ARM Cortex-M33\n");
+          break;
+        case '6':
+          printf("CPU Core:           ARM Cortex-M33/M4\n");
+          break;
+        case '8':
+          printf("CPU Core:           ARM Cortex-M85\n");
+          break;
+        default:
+          printf("CPU Core:           Unknown\n");
         }
       }
-      if (product[0]) {
-        printf("Product: %s\n", product);
-        /* Determine series from product name */
-        if (product[3] == 'A' && product[4] == '2')
-          printf("Chip: RA MCU + RA2 Series (Cortex-M23)\n");
-        else if (product[3] == 'A' && product[4] == '4')
-          printf("Chip: RA MCU + RA4 Series (Cortex-M33)\n");
-        else if (product[3] == 'A' && product[4] == '6')
-          printf("Chip: RA MCU + RA6 Series (Cortex-M33)\n");
-        else
-          printf("Chip: RA MCU\n");
-      }
     }
+  } else {
+    /* Minimal response - just print raw data */
+    printf("Raw signature data (%zu bytes): ", data_len);
+    for (size_t i = 0; i < data_len; i++)
+      printf("%02X ", data[i]);
+    printf("\n");
   }
+
+  printf("=============================================================\n");
 
   return 0;
 }
@@ -880,8 +965,8 @@ static const struct {
   { 0,    NULL,       NULL                                         },
 };
 
-static const char *
-dlm_state_name(uint8_t code) {
+const char *
+ra_dlm_state_name(uint8_t code) {
   for (size_t i = 0; dlm_states[i].name != NULL; i++) {
     if (dlm_states[i].code == code)
       return dlm_states[i].name;
@@ -929,10 +1014,13 @@ ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out) {
   }
 
   uint8_t dlm = resp_data[0];
-  printf("DLM State: 0x%02X (%s: %s)\n", dlm, dlm_state_name(dlm), dlm_state_desc(dlm));
 
-  if (dlm_out != NULL)
+  if (dlm_out != NULL) {
     *dlm_out = dlm;
+  } else {
+    /* Print only when no output pointer provided (standalone dlm command) */
+    printf("DLM State: 0x%02X (%s: %s)\n", dlm, ra_dlm_state_name(dlm), dlm_state_desc(dlm));
+  }
 
   return 0;
 }
@@ -971,8 +1059,8 @@ ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm) {
 
   current_dlm = resp_data[0];
 
-  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, dlm_state_name(current_dlm));
-  printf("Target DLM state:  0x%02X (%s)\n", dest_dlm, dlm_state_name(dest_dlm));
+  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, ra_dlm_state_name(current_dlm));
+  printf("Target DLM state:  0x%02X (%s)\n", dest_dlm, ra_dlm_state_name(dest_dlm));
 
   if (current_dlm == dest_dlm) {
     printf("Already in target state\n");
@@ -1011,7 +1099,7 @@ ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm) {
   if (unpack_with_error(resp, n, resp_data, &data_len, "DLM transit") < 0)
     return -1;
 
-  printf("DLM transit complete: %s -> %s\n", dlm_state_name(current_dlm), dlm_state_name(dest_dlm));
+  printf("DLM transit complete: %s -> %s\n", ra_dlm_state_name(current_dlm), ra_dlm_state_name(dest_dlm));
   return 0;
 }
 
@@ -1308,7 +1396,7 @@ ra_initialize(ra_device_t *dev) {
     return -1;
   }
 
-  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, dlm_state_name(current_dlm));
+  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, ra_dlm_state_name(current_dlm));
   printf("Initializing device (factory reset to SSD state)...\n");
   printf("WARNING: This will erase all flash areas and reset boundaries!\n");
 
