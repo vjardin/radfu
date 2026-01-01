@@ -152,6 +152,22 @@ int ra_set_boundary(ra_device_t *dev, const ra_boundary_t *bnd);
 int ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out);
 
 /*
+ * Set device parameter
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ * param_id: parameter ID (e.g., PARAM_ID_INIT)
+ * value: parameter value to set
+ *
+ * For PARAM_ID_INIT:
+ *   PARAM_INIT_DISABLED (0x00): Disable initialization command
+ *   PARAM_INIT_ENABLED (0x07): Enable initialization command
+ *
+ * WARNING: Disabling initialization prevents factory reset capability.
+ * Returns: 0 on success, -1 on error
+ */
+int ra_set_param(ra_device_t *dev, uint8_t param_id, uint8_t value);
+
+/*
  * Initialize device (factory reset)
  * Clears User area, Data area, Config area, boundary settings, and key index.
  * DLM state transitions to SSD after completion.

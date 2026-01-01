@@ -1182,6 +1182,57 @@ ra_get_param(ra_device_t *dev, uint8_t param_id, uint8_t *value_out) {
   return 0;
 }
 
+int
+ra_set_param(ra_device_t *dev, uint8_t param_id, uint8_t value) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[2];
+  ssize_t pkt_len, n;
+
+  /* Display what we're setting */
+  if (param_id == PARAM_ID_INIT) {
+    const char *state;
+    if (value == PARAM_INIT_DISABLED) {
+      state = "disabled";
+      warnx("WARNING: Disabling initialization prevents factory reset capability");
+    } else if (value == PARAM_INIT_ENABLED) {
+      state = "enabled";
+    } else {
+      warnx("invalid value 0x%02X for initialization parameter (use 0x00 or 0x07)", value);
+      return -1;
+    }
+    printf("Setting initialization command: %s (0x%02X)\n", state, value);
+  } else {
+    printf("Setting parameter 0x%02X to 0x%02X\n", param_id, value);
+  }
+
+  /* Parameter setting command: PMID (1 byte) + PRMT (1 byte for INIT) */
+  data[0] = param_id;
+  data[1] = value;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), PRM_SET_CMD, data, 2, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Parameter setting may involve flash writes */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for parameter setting");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "parameter setting") < 0)
+    return -1;
+
+  printf("Parameter set successfully\n");
+  return 0;
+}
+
 /* DLM state codes for initialize command */
 #define DLM_CM 0x01
 #define DLM_SSD 0x02

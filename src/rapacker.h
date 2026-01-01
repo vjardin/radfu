@@ -26,6 +26,7 @@
 #define BND_SET_CMD 0x4E     /* Boundary setting */
 #define BND_CMD 0x4F         /* Boundary request */
 #define INI_CMD 0x50         /* Initialize command */
+#define PRM_SET_CMD 0x51     /* Parameter setting */
 #define PRM_CMD 0x52         /* Parameter request */
 #define BAU_CMD 0x34         /* Baud rate setting */
 #define SIG_CMD 0x3A         /* Get device signature */

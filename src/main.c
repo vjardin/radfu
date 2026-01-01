@@ -40,6 +40,7 @@ usage(int status) {
       "  boundary       Show secure/non-secure boundary settings\n"
       "  boundary-set   Set TrustZone boundaries (requires --cfs1/--cfs2/--dfs/--srs1/--srs2)\n"
       "  param          Show device parameter (initialization command)\n"
+      "  param-set <enable|disable>  Enable/disable initialization command\n"
       "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
       "\n"
@@ -137,6 +138,7 @@ enum command {
   CMD_BOUNDARY,
   CMD_BOUNDARY_SET,
   CMD_PARAM,
+  CMD_PARAM_SET,
   CMD_INIT,
   CMD_OSIS,
 };
@@ -181,6 +183,7 @@ main(int argc, char *argv[]) {
   bool erase_all = false;
   bool usb_reset = false;
   uint8_t dest_dlm = 0;
+  uint8_t param_value = 0;
   ra_boundary_t bnd = { 0 };
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
@@ -308,6 +311,17 @@ main(int argc, char *argv[]) {
       errx(EXIT_FAILURE, "boundary-set requires all options: --cfs1 --cfs2 --dfs --srs1 --srs2");
   } else if (strcmp(command, "param") == 0) {
     cmd = CMD_PARAM;
+  } else if (strcmp(command, "param-set") == 0) {
+    cmd = CMD_PARAM_SET;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "param-set requires an argument: enable or disable");
+    const char *val = argv[optind];
+    if (strcasecmp(val, "enable") == 0)
+      param_value = PARAM_INIT_ENABLED;
+    else if (strcasecmp(val, "disable") == 0)
+      param_value = PARAM_INIT_DISABLED;
+    else
+      errx(EXIT_FAILURE, "invalid param-set value: %s (use enable or disable)", val);
   } else if (strcmp(command, "init") == 0) {
     cmd = CMD_INIT;
   } else if (strcmp(command, "osis") == 0) {
@@ -385,6 +399,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_PARAM:
     ret = ra_get_param(&dev, PARAM_ID_INIT, NULL);
+    break;
+  case CMD_PARAM_SET:
+    ret = ra_set_param(&dev, PARAM_ID_INIT, param_value);
     break;
   case CMD_INIT:
     ret = ra_initialize(&dev);
