@@ -32,38 +32,71 @@ static ssize_t
 unpack_with_error(
     const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len, const char *context) {
   uint8_t cmd;
-  ssize_t ret = ra_unpack_pkt(buf, buflen, data, data_len, &cmd);
-  if (ret < 0 && (cmd & STATUS_ERR)) {
-    uint8_t err_code = cmd & 0x7F;
-    warnx("%s: MCU error 0x%02X (%s: %s)",
-        context,
-        err_code,
-        ra_strerror(err_code),
-        ra_strdesc(err_code));
+  size_t dlen = 0;
+  ssize_t ret = ra_unpack_pkt(buf, buflen, data, &dlen, &cmd);
+  if (data_len != NULL)
+    *data_len = dlen;
+  if (ret < 0) {
+    if (cmd & STATUS_ERR) {
+      /* Error code is in data[0], not in cmd byte */
+      uint8_t err_code = (dlen > 0 && data != NULL) ? data[0] : 0;
+      warnx("%s: MCU error 0x%02X (%s: %s)",
+          context,
+          err_code,
+          ra_strerror(err_code),
+          ra_strdesc(err_code));
+    } else {
+      warnx("%s: unpack failed (cmd=0x%02X)", context, cmd);
+    }
   }
   return ret;
 }
 
+/*
+ * Find area index containing the given address
+ * Returns: area index (0-3) on success, -1 if not found
+ */
 static int
-set_size_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
-  uint32_t align = dev->chip_layout[dev->sel_area].align;
-  uint32_t ead = dev->chip_layout[dev->sel_area].ead;
+find_area_for_address(ra_device_t *dev, uint32_t addr) {
+  for (int i = 0; i < MAX_AREAS; i++) {
+    if (dev->chip_layout[i].sad == 0 && dev->chip_layout[i].ead == 0)
+      continue;
+    if (addr >= dev->chip_layout[i].sad && addr <= dev->chip_layout[i].ead)
+      return i;
+  }
+  return -1;
+}
 
-  if (align == 0) {
-    warnx("invalid alignment (area not configured?)");
+/*
+ * Set boundaries for erase operations (requires EAU alignment)
+ */
+static int
+set_erase_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
+  int area = find_area_for_address(dev, start);
+  if (area < 0) {
+    warnx("address 0x%x not in any known area", start);
+    return -1;
+  }
+  dev->sel_area = area;
+
+  uint32_t eau = dev->chip_layout[area].eau;
+  uint32_t ead = dev->chip_layout[area].ead;
+
+  if (eau == 0) {
+    warnx("area %d does not support erase operations", area);
     return -1;
   }
 
-  if (start % align != 0) {
-    warnx("start address 0x%x not aligned on sector size 0x%x", start, align);
+  if (start % eau != 0) {
+    warnx("start address 0x%x not aligned on erase block size 0x%x", start, eau);
     return -1;
   }
 
-  if (size < align)
-    warnx("warning: size less than sector size, padding with zeros");
+  if (size < eau)
+    warnx("warning: size less than erase block size, padding with zeros");
 
-  uint32_t blocks = (size + align - 1) / align;
-  uint32_t end = blocks * align + start - 1;
+  uint32_t blocks = (size + eau - 1) / eau;
+  uint32_t end = blocks * eau + start - 1;
 
   if (end <= start) {
     warnx("end address smaller or equal to start address");
@@ -72,6 +105,119 @@ set_size_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
 
   if (end > ead) {
     warnx("size exceeds available ROM space (max 0x%x)", ead);
+    return -1;
+  }
+
+  *end_out = end;
+  return 0;
+}
+
+/*
+ * Set boundaries for read operations (no alignment required)
+ */
+static int
+set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
+  int area = find_area_for_address(dev, start);
+  if (area < 0) {
+    warnx("address 0x%x not in any known area", start);
+    return -1;
+  }
+  dev->sel_area = area;
+
+  uint32_t ead = dev->chip_layout[area].ead;
+  uint32_t end = start + size - 1;
+
+  if (end <= start && size > 1) {
+    warnx("end address smaller or equal to start address");
+    return -1;
+  }
+
+  if (end > ead) {
+    warnx("size exceeds area boundary (max 0x%x)", ead);
+    return -1;
+  }
+
+  *end_out = end;
+  return 0;
+}
+
+/*
+ * Set boundaries for write operations (requires WAU alignment)
+ */
+static int
+set_write_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
+  int area = find_area_for_address(dev, start);
+  if (area < 0) {
+    warnx("address 0x%x not in any known area", start);
+    return -1;
+  }
+  dev->sel_area = area;
+
+  uint32_t wau = dev->chip_layout[area].wau;
+  uint32_t ead = dev->chip_layout[area].ead;
+
+  if (wau == 0) {
+    warnx("area %d does not support write operations", area);
+    return -1;
+  }
+
+  if (start % wau != 0) {
+    warnx("start address 0x%x not aligned on write block size 0x%x", start, wau);
+    return -1;
+  }
+
+  uint32_t blocks = (size + wau - 1) / wau;
+  uint32_t end = blocks * wau + start - 1;
+
+  if (end <= start) {
+    warnx("end address smaller or equal to start address");
+    return -1;
+  }
+
+  if (end > ead) {
+    warnx("size exceeds available ROM space (max 0x%x)", ead);
+    return -1;
+  }
+
+  *end_out = end;
+  return 0;
+}
+
+/*
+ * Set boundaries for CRC operations (requires CAU alignment)
+ */
+static int
+set_crc_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *end_out) {
+  int area = find_area_for_address(dev, start);
+  if (area < 0) {
+    warnx("address 0x%x not in any known area", start);
+    return -1;
+  }
+  dev->sel_area = area;
+
+  uint32_t cau = dev->chip_layout[area].cau;
+  uint32_t ead = dev->chip_layout[area].ead;
+
+  if (cau == 0) {
+    warnx("area %d does not support CRC operations", area);
+    return -1;
+  }
+
+  if (start % cau != 0) {
+    warnx("start address 0x%x not aligned on CRC unit 0x%x", start, cau);
+    return -1;
+  }
+
+  uint32_t blocks = (size + cau - 1) / cau;
+  uint32_t end = blocks * cau + start - 1;
+
+  if (end <= start && size > cau) {
+    warnx("end address smaller or equal to start address");
+    return -1;
+  }
+
+  if (end > ead) {
+    warnx("size exceeds area boundary (max 0x%x)", ead);
     return -1;
   }
 
@@ -110,8 +256,8 @@ format_size(uint32_t bytes, char *buf, size_t buflen) {
 int
 ra_get_area_info(ra_device_t *dev, bool print) {
   uint8_t pkt[MAX_PKT_LEN];
-  uint8_t resp[32];
-  uint8_t data[32];
+  uint8_t resp[64];
+  uint8_t data[64];
   size_t data_len;
   ssize_t pkt_len, n;
   uint32_t code_flash_size = 0;
@@ -142,9 +288,9 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     if (unpack_with_error(resp, n, data, &data_len, "area info") < 0)
       return -1;
 
-    /* Parse: KOA(1) + SAD(4) + EAD(4) + EAU(4) + WAU(4) = 17 bytes */
-    if (data_len < 17) {
-      warnx("invalid area info length");
+    /* Parse: KOA(1) + SAD(4) + EAD(4) + EAU(4) + WAU(4) + RAU(4) + CAU(4) = 25 bytes */
+    if (data_len < 25) {
+      warnx("invalid area info length: got %zu, expected 25", data_len);
       return -1;
     }
 
@@ -153,10 +299,15 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     uint32_t ead = be_to_uint32(&data[5]);
     uint32_t eau = be_to_uint32(&data[9]);
     uint32_t wau = be_to_uint32(&data[13]);
+    uint32_t rau = be_to_uint32(&data[17]);
+    uint32_t cau = be_to_uint32(&data[21]);
 
     dev->chip_layout[i].sad = sad;
     dev->chip_layout[i].ead = ead;
-    dev->chip_layout[i].align = eau;
+    dev->chip_layout[i].eau = eau;
+    dev->chip_layout[i].wau = wau;
+    dev->chip_layout[i].rau = rau;
+    dev->chip_layout[i].cau = cau;
 
     /* Calculate sizes by area type */
     uint32_t area_size = (ead >= sad) ? (ead - sad + 1) : 0;
@@ -168,23 +319,29 @@ ra_get_area_info(ra_device_t *dev, bool print) {
       config_size += area_size;
 
     if (print) {
-      char size_str[32], erase_str[32], write_str[32];
+      char size_str[32], erase_str[32], write_str[32], crc_str[32];
       format_size(area_size, size_str, sizeof(size_str));
       if (eau > 0)
         format_size(eau, erase_str, sizeof(erase_str));
       else
         snprintf(erase_str, sizeof(erase_str), "n/a");
       format_size(wau, write_str, sizeof(write_str));
-      printf("Area %d [%s]: 0x%08x-0x%08x (%s, erase block %s, write block %s)\n",
+      if (cau > 0)
+        format_size(cau, crc_str, sizeof(crc_str));
+      else
+        snprintf(crc_str, sizeof(crc_str), "n/a");
+      printf("Area %d [%s]: 0x%08x-0x%08x (%s, erase %s, write %s, crc %s)\n",
           i,
           get_area_type(sad),
           sad,
           ead,
           size_str,
           erase_str,
-          write_str);
+          write_str,
+          crc_str);
     }
     (void)koa; /* KOA field - reserved for future use */
+    (void)rau; /* RAU field - read alignment, currently unused */
   }
 
   /* Print summary */
@@ -307,17 +464,28 @@ ra_authenticate(ra_device_t *dev, const uint8_t *id_code) {
   if (pkt_len < 0)
     return -1;
 
+  fprintf(stderr, "IDA send %zd bytes:", pkt_len);
+  for (ssize_t i = 0; i < pkt_len; i++)
+    fprintf(stderr, " %02X", pkt[i]);
+  fprintf(stderr, "\n");
+
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  n = ra_recv(dev, resp, 7, 500);
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  fprintf(stderr, "IDA recv %zd bytes:", n);
+  for (ssize_t i = 0; i < n && i < 16; i++)
+    fprintf(stderr, " %02X", resp[i]);
+  fprintf(stderr, "\n");
+
   if (n < 7) {
     warnx("short response for ID authentication");
     return -1;
   }
 
+  uint8_t data[16];
   size_t data_len;
-  if (unpack_with_error(resp, n, NULL, &data_len, "ID authentication") < 0)
+  if (unpack_with_error(resp, n, data, &data_len, "ID authentication") < 0)
     return -1;
 
   fprintf(stderr, "ID authentication successful\n");
@@ -332,10 +500,7 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
   ssize_t pkt_len, n;
   uint32_t end;
 
-  if (size == 0)
-    size = dev->chip_layout[dev->sel_area].ead - start;
-
-  if (set_size_boundaries(dev, start, size, &end) < 0)
+  if (set_erase_boundaries(dev, start, size == 0 ? 1 : size, &end) < 0)
     return -1;
 
   printf("Erasing 0x%08x:0x%08x\n", start, end);
@@ -375,10 +540,7 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
   uint32_t end;
   int fd;
 
-  if (size == 0)
-    size = 0x3FFFF - start;
-
-  if (set_size_boundaries(dev, start, size, &end) < 0)
+  if (set_read_boundaries(dev, start, size == 0 ? 0x3FFFF - start : size, &end) < 0)
     return -1;
 
   fd = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -396,6 +558,11 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
     return -1;
   }
 
+  fprintf(stderr, "REA send %zd bytes:", pkt_len);
+  for (ssize_t i = 0; i < pkt_len; i++)
+    fprintf(stderr, " %02X", pkt[i]);
+  fprintf(stderr, "\n");
+
   if (ra_send(dev, pkt, pkt_len) < 0) {
     close(fd);
     return -1;
@@ -407,8 +574,12 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
 
   for (uint32_t i = 0; i <= nr_packets; i++) {
     n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+    fprintf(stderr, "REA recv %zd bytes:", n);
+    for (ssize_t j = 0; j < n && j < 20; j++)
+      fprintf(stderr, " %02X", resp[j]);
+    fprintf(stderr, "\n");
     if (n < 7) {
-      warnx("short response during read");
+      warnx("short response during read (%zd bytes)", n);
       close(fd);
       return -1;
     }
@@ -474,7 +645,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
     return -1;
   }
 
-  if (set_size_boundaries(dev, start, size, &end) < 0) {
+  if (set_write_boundaries(dev, start, size, &end) < 0) {
     close(fd);
     return -1;
   }
@@ -617,6 +788,55 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
     else
       printf("Verify failed\n");
   }
+
+  return 0;
+}
+
+int
+ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[16];
+  uint8_t data[8];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+  uint32_t end;
+
+  if (set_crc_boundaries(dev, start, size == 0 ? 1 : size, &end) < 0)
+    return -1;
+
+  printf("Calculating CRC for 0x%08x-0x%08x\n", start, end);
+
+  uint32_to_be(start, &data[0]);
+  uint32_to_be(end, &data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), CRC_CMD, data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* CRC calculation can take time for large areas */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for CRC command");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "CRC") < 0)
+    return -1;
+
+  if (data_len < 4) {
+    warnx("invalid CRC response length: %zu", data_len);
+    return -1;
+  }
+
+  uint32_t crc = be_to_uint32(resp_data);
+  printf("CRC-32: 0x%08X\n", crc);
+
+  if (crc_out != NULL)
+    *crc_out = crc;
 
   return 0;
 }

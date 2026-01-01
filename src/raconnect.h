@@ -24,9 +24,12 @@
 #define MAX_TRANSFER_SIZE (2048 + 6)
 
 typedef struct {
-  uint32_t sad;   /* Start address */
-  uint32_t ead;   /* End address */
-  uint32_t align; /* Erase alignment unit */
+  uint32_t sad; /* Start address */
+  uint32_t ead; /* End address */
+  uint32_t eau; /* Erase alignment unit */
+  uint32_t wau; /* Write alignment unit */
+  uint32_t rau; /* Read alignment unit */
+  uint32_t cau; /* CRC alignment unit */
 } ra_area_t;
 
 typedef struct {

@@ -16,19 +16,20 @@ static const struct {
   const char *name;
   const char *desc;
 } error_codes[] = {
-  { 0x0C, "ERR_UNSU", "unsupported command"         },
-  { 0xC1, "ERR_PCKT", "packet error (length/ETX)"   },
-  { 0xC2, "ERR_CHKS", "checksum mismatch"           },
-  { 0xC3, "ERR_FLOW", "command flow error"          },
-  { 0xD0, "ERR_ADDR", "invalid address"             },
-  { 0xD4, "ERR_BAUD", "baud rate margin error"      },
-  { 0xDA, "ERR_PROT", "protection error"            },
-  { 0xDB, "ERR_ID",   "ID authentication mismatch"  },
-  { 0xDC, "ERR_SERI", "serial programming disabled" },
-  { 0xE1, "ERR_ERA",  "erase failed"                },
-  { 0xE2, "ERR_WRI",  "write failed"                },
-  { 0xE7, "ERR_SEQ",  "sequencer error"             },
-  { 0,    NULL,       NULL                          }
+  { 0x0C, "ERR_UNSU", "unsupported command"                },
+  { 0xC1, "ERR_PCKT", "packet error (length/ETX)"          },
+  { 0xC2, "ERR_CHKS", "checksum mismatch"                  },
+  { 0xC3, "ERR_FLOW", "command flow error"                 },
+  { 0xD0, "ERR_ADDR", "invalid address"                    },
+  { 0xD4, "ERR_BAUD", "baud rate margin error"             },
+  { 0xD5, "ERR_CMD",  "command not accepted (wrong state)" },
+  { 0xDA, "ERR_PROT", "protection error"                   },
+  { 0xDB, "ERR_ID",   "ID authentication mismatch"         },
+  { 0xDC, "ERR_SERI", "serial programming disabled"        },
+  { 0xE1, "ERR_ERA",  "erase failed"                       },
+  { 0xE2, "ERR_WRI",  "write failed"                       },
+  { 0xE7, "ERR_SEQ",  "sequencer error"                    },
+  { 0,    NULL,       NULL                                 }
 };
 
 const char *
@@ -124,6 +125,10 @@ ra_unpack_pkt(const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len
     return -1;
   }
 
+  /* Set cmd first so caller can check error code */
+  if (cmd != NULL)
+    *cmd = res;
+
   /* Check for MCU error */
   if (res & STATUS_ERR) {
     if (dlen > 0 && data != NULL && data_len != NULL) {
@@ -153,8 +158,6 @@ ra_unpack_pkt(const uint8_t *buf, size_t buflen, uint8_t *data, size_t *data_len
     memcpy(data, &buf[4], dlen);
   if (data_len != NULL)
     *data_len = dlen;
-  if (cmd != NULL)
-    *cmd = res;
 
   return (ssize_t)dlen;
 }

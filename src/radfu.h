@@ -50,4 +50,12 @@ int ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
  */
 int ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool verify);
 
+/*
+ * Calculate CRC of flash memory region
+ * Uses CRC-32-IEEE-802.3 (polynomial 0x04C11DB7)
+ * crc_out: pointer to store the CRC result (may be NULL)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out);
+
 #endif /* RADFU_H */

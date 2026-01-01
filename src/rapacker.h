@@ -19,6 +19,7 @@
 #define ERA_CMD 0x12 /* Erase flash */
 #define WRI_CMD 0x13 /* Write to flash */
 #define REA_CMD 0x15 /* Read from flash */
+#define CRC_CMD 0x18 /* CRC calculation */
 #define IDA_CMD 0x30 /* ID authentication */
 #define BAU_CMD 0x34 /* Baud rate setting */
 #define SIG_CMD 0x3A /* Get device signature */
