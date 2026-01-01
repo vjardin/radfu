@@ -67,6 +67,34 @@ int ra_crc(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *crc_out);
  */
 int ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out);
 
+/* DLM state codes */
+#define DLM_STATE_CM 0x01       /* Chip Manufacturing */
+#define DLM_STATE_SSD 0x02      /* Secure Software Development */
+#define DLM_STATE_NSECSD 0x03   /* Non-Secure Software Development */
+#define DLM_STATE_DPL 0x04      /* Deployed */
+#define DLM_STATE_LCK_DBG 0x05  /* Locked Debug */
+#define DLM_STATE_LCK_BOOT 0x06 /* Locked Boot Interface */
+#define DLM_STATE_RMA_REQ 0x07  /* RMA Request */
+#define DLM_STATE_RMA_ACK 0x08  /* RMA Acknowledged */
+
+/*
+ * Transition DLM state without authentication
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ *
+ * Allowed transitions (without authentication):
+ *   CM (0x01) -> SSD (0x02)
+ *   SSD (0x02) -> NSECSD (0x03), DPL (0x04)
+ *   NSECSD (0x03) -> DPL (0x04)
+ *   DPL (0x04) -> LCK_DBG (0x05), LCK_BOOT (0x06)
+ *   LCK_DBG (0x05) -> LCK_BOOT (0x06)
+ *
+ * WARNING: LCK_BOOT transition causes bootloader to hang (no more commands)
+ * dest_dlm: destination DLM state code
+ * Returns: 0 on success, -1 on error
+ */
+int ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm);
+
 /*
  * Secure/Non-secure boundary settings
  * All sizes are in KB

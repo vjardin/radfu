@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #ifndef VERSION
 #warning "VERSION not defined, using dummy-version"
@@ -35,6 +36,7 @@ usage(int status) {
       "  erase          Erase flash sectors\n"
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
+      "  dlm-transit <state>  Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)\n"
       "  boundary       Show secure/non-secure boundary settings\n"
       "  param          Show device parameter (initialization command)\n"
       "  init           Initialize device (factory reset to SSD state)\n"
@@ -124,6 +126,7 @@ enum command {
   CMD_ERASE,
   CMD_CRC,
   CMD_DLM,
+  CMD_DLM_TRANSIT,
   CMD_BOUNDARY,
   CMD_PARAM,
   CMD_INIT,
@@ -157,6 +160,7 @@ main(int argc, char *argv[]) {
   bool use_auth = false;
   bool erase_all = false;
   bool usb_reset = false;
+  uint8_t dest_dlm = 0;
   enum command cmd = CMD_NONE;
   int opt;
 
@@ -236,6 +240,23 @@ main(int argc, char *argv[]) {
     cmd = CMD_CRC;
   } else if (strcmp(command, "dlm") == 0) {
     cmd = CMD_DLM;
+  } else if (strcmp(command, "dlm-transit") == 0) {
+    cmd = CMD_DLM_TRANSIT;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "dlm-transit requires a state argument (ssd/nsecsd/dpl/lck_dbg/lck_boot)");
+    const char *state = argv[optind];
+    if (strcasecmp(state, "ssd") == 0)
+      dest_dlm = DLM_STATE_SSD;
+    else if (strcasecmp(state, "nsecsd") == 0)
+      dest_dlm = DLM_STATE_NSECSD;
+    else if (strcasecmp(state, "dpl") == 0)
+      dest_dlm = DLM_STATE_DPL;
+    else if (strcasecmp(state, "lck_dbg") == 0)
+      dest_dlm = DLM_STATE_LCK_DBG;
+    else if (strcasecmp(state, "lck_boot") == 0)
+      dest_dlm = DLM_STATE_LCK_BOOT;
+    else
+      errx(EXIT_FAILURE, "unknown DLM state: %s (use ssd/nsecsd/dpl/lck_dbg/lck_boot)", state);
   } else if (strcmp(command, "boundary") == 0) {
     cmd = CMD_BOUNDARY;
   } else if (strcmp(command, "param") == 0) {
@@ -305,6 +326,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_DLM:
     ret = ra_get_dlm(&dev, NULL);
+    break;
+  case CMD_DLM_TRANSIT:
+    ret = ra_dlm_transit(&dev, dest_dlm);
     break;
   case CMD_BOUNDARY:
     ret = ra_get_boundary(&dev, NULL);

@@ -915,6 +915,84 @@ ra_get_dlm(ra_device_t *dev, uint8_t *dlm_out) {
   return 0;
 }
 
+int
+ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[2];
+  ssize_t pkt_len, n;
+
+  /* First, get current DLM state */
+  uint8_t current_dlm;
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for DLM state request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "DLM state") < 0)
+    return -1;
+
+  if (data_len < 1) {
+    warnx("invalid DLM response length: %zu", data_len);
+    return -1;
+  }
+
+  current_dlm = resp_data[0];
+
+  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, dlm_state_name(current_dlm));
+  printf("Target DLM state:  0x%02X (%s)\n", dest_dlm, dlm_state_name(dest_dlm));
+
+  if (current_dlm == dest_dlm) {
+    printf("Already in target state\n");
+    return 0;
+  }
+
+  /* Warn about LCK_BOOT - bootloader will hang after transition */
+  if (dest_dlm == DLM_STATE_LCK_BOOT) {
+    printf("WARNING: Transitioning to LCK_BOOT will cause bootloader to hang!\n");
+    printf("         Device will no longer accept commands until power cycle.\n");
+  }
+
+  /* Send DLM state transit command: SDLM = current state, DDLM = dest state */
+  data[0] = current_dlm; /* SDLM: source DLM state */
+  data[1] = dest_dlm;    /* DDLM: destination DLM state */
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_TRANSIT_CMD, data, 2, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* DLM transit may involve flash writes */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    /* If transitioning to LCK_BOOT, device won't respond after sending OK */
+    if (dest_dlm == DLM_STATE_LCK_BOOT) {
+      printf("DLM transit to LCK_BOOT complete (bootloader is now hung)\n");
+      return 0;
+    }
+    warnx("short response for DLM state transit");
+    return -1;
+  }
+
+  if (unpack_with_error(resp, n, resp_data, &data_len, "DLM transit") < 0)
+    return -1;
+
+  printf("DLM transit complete: %s -> %s\n", dlm_state_name(current_dlm), dlm_state_name(dest_dlm));
+  return 0;
+}
+
 /*
  * Convert big-endian byte array to uint16_t
  */

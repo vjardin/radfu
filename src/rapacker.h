@@ -15,19 +15,20 @@
 #include <sys/types.h>
 
 /* Bootloader commands */
-#define INQ_CMD 0x00 /* Inquire connection */
-#define ERA_CMD 0x12 /* Erase flash */
-#define WRI_CMD 0x13 /* Write to flash */
-#define REA_CMD 0x15 /* Read from flash */
-#define CRC_CMD 0x18 /* CRC calculation */
-#define DLM_CMD 0x2C /* DLM state request */
-#define IDA_CMD 0x30 /* ID authentication */
-#define BND_CMD 0x4F /* Boundary request */
-#define INI_CMD 0x50 /* Initialize command */
-#define PRM_CMD 0x52 /* Parameter request */
-#define BAU_CMD 0x34 /* Baud rate setting */
-#define SIG_CMD 0x3A /* Get device signature */
-#define ARE_CMD 0x3B /* Get area information */
+#define INQ_CMD 0x00         /* Inquire connection */
+#define ERA_CMD 0x12         /* Erase flash */
+#define WRI_CMD 0x13         /* Write to flash */
+#define REA_CMD 0x15         /* Read from flash */
+#define CRC_CMD 0x18         /* CRC calculation */
+#define DLM_CMD 0x2C         /* DLM state request */
+#define DLM_TRANSIT_CMD 0x71 /* DLM state transit */
+#define IDA_CMD 0x30         /* ID authentication */
+#define BND_CMD 0x4F         /* Boundary request */
+#define INI_CMD 0x50         /* Initialize command */
+#define PRM_CMD 0x52         /* Parameter request */
+#define BAU_CMD 0x34         /* Baud rate setting */
+#define SIG_CMD 0x3A         /* Get device signature */
+#define ARE_CMD 0x3B         /* Get area information */
 
 /* Status codes */
 #define STATUS_OK 0x00
