@@ -610,13 +610,15 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
       return -1;
     }
 
-    /* Send ACK */
-    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-    if (pkt_len < 0) {
-      close(fd);
-      return -1;
+    /* Send ACK for all packets except the last one (per spec 6.20.3) */
+    if (i < nr_packets) {
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
+      if (pkt_len < 0) {
+        close(fd);
+        return -1;
+      }
+      ra_send(dev, pkt, pkt_len);
     }
-    ra_send(dev, pkt, pkt_len);
 
     progress_update(&prog, i + 1);
   }
