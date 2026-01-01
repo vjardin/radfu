@@ -1,3 +1,13 @@
+radfu (0.2.0-1) unstable; urgency=low
+
+  * Fix RAU alignment validation for read operations
+  * Fix skip ACK after last read data packet (per spec 6.20)
+  * Fix OSIS detection to track authentication state
+  * Fix write to send exact data size matching range (per spec 6.19)
+  * Fix connection to detect existing bootloader session
+
+ -- Vincent Jardin <vjardin@free.fr>  Wed, 01 Jan 2025 18:00:00 +0100
+
 radfu (0.1.0-1) unstable; urgency=low
 
   * Add DLM state transit command
