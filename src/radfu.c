@@ -667,6 +667,9 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
     return -1;
   }
 
+  /* Calculate actual write size (WAU-aligned range) */
+  uint32_t write_size = end - start + 1;
+
   /* Send write command */
   uint32_to_be(start, &data[0]);
   uint32_to_be(end, &data[4]);
@@ -696,24 +699,26 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   }
 
   progress_t prog;
-  progress_init(&prog, size, "Writing");
+  progress_init(&prog, write_size, "Writing");
 
   uint32_t total = 0;
-  while (total < size) {
-    ssize_t bytes_read = read(fd, chunk, CHUNK_SIZE);
+  while (total < write_size) {
+    /* Calculate chunk size: min(CHUNK_SIZE, remaining) per spec 6.19 */
+    uint32_t remaining = write_size - total;
+    uint32_t chunk_size = remaining < CHUNK_SIZE ? remaining : CHUNK_SIZE;
+
+    ssize_t bytes_read = read(fd, chunk, chunk_size);
     if (bytes_read < 0) {
       warn("read from file failed");
       close(fd);
       return -1;
     }
-    if (bytes_read == 0)
-      break;
 
-    /* Pad to chunk size if needed */
-    if (bytes_read < CHUNK_SIZE)
-      memset(chunk + bytes_read, 0, CHUNK_SIZE - bytes_read);
+    /* Pad with zeros if file is smaller than write range */
+    if (bytes_read < (ssize_t)chunk_size)
+      memset(chunk + bytes_read, 0, chunk_size - bytes_read);
 
-    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, chunk, CHUNK_SIZE, true);
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, chunk, chunk_size, true);
     if (pkt_len < 0) {
       close(fd);
       return -1;
@@ -736,8 +741,8 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
       return -1;
     }
 
-    total += CHUNK_SIZE;
-    progress_update(&prog, total > size ? size : total);
+    total += chunk_size;
+    progress_update(&prog, total);
   }
 
   progress_finish(&prog);
