@@ -120,19 +120,31 @@ ra_open(ra_device_t *dev, const char *port) {
   /* Flush any stale data in buffers */
   tcflush(dev->fd, TCIOFLUSH);
 
-  /* Establish connection:
-   * 1. Sync with 0x00 bytes until device responds with 0x00
-   * 2. Confirm with 0x55, expect boot code (0xC3 or 0xC6)
-   */
-  if (ra_sync(dev) < 0) {
+  /* Check if bootloader is already in command mode (from previous connection) */
+  int already_connected = ra_inquire(dev);
+  if (already_connected < 0) {
     close(dev->fd);
     dev->fd = -1;
     return -1;
   }
-  if (ra_confirm(dev) < 0) {
-    close(dev->fd);
-    dev->fd = -1;
-    return -1;
+
+  if (already_connected) {
+    fprintf(stderr, "Bootloader already in command mode\n");
+  } else {
+    /* Establish connection:
+     * 1. Sync with 0x00 bytes until device responds with 0x00
+     * 2. Confirm with 0x55, expect boot code (0xC3 or 0xC6)
+     */
+    if (ra_sync(dev) < 0) {
+      close(dev->fd);
+      dev->fd = -1;
+      return -1;
+    }
+    if (ra_confirm(dev) < 0) {
+      close(dev->fd);
+      dev->fd = -1;
+      return -1;
+    }
   }
 
   return 0;
