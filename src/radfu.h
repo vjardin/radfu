@@ -179,4 +179,48 @@ int ra_set_param(ra_device_t *dev, uint8_t param_id, uint8_t value);
  */
 int ra_initialize(ra_device_t *dev);
 
+/*
+ * Key setting - inject wrapped key for secure boot
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ *
+ * key_index: Key slot index (0-7)
+ * wrapped_key: Wrapped (encrypted) key data
+ * key_len: Length of wrapped key data (32-48 bytes depending on key type)
+ *
+ * Key types by index:
+ *   0: AES-128-ECB-WUFPK (Update Firmware Protection Key)
+ *   1: AES-256-ECB-WUFPK
+ *   2-7: Reserved/device-specific
+ *
+ * Keys must be wrapped using Renesas key wrapping tools before injection.
+ * Returns: 0 on success, -1 on error
+ */
+int ra_key_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key, size_t key_len);
+
+/*
+ * Key verify - verify injected key at index
+ * Checks if a valid key exists at the specified index.
+ * valid_out: pointer to store result (1=valid, 0=invalid/empty), may be NULL
+ * Returns: 0 on success, -1 on error
+ */
+int ra_key_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
+
+/*
+ * User key setting - inject user-defined wrapped key
+ * Similar to ra_key_set but for user-defined key slots.
+ * key_index: User key slot index
+ * wrapped_key: Wrapped key data
+ * key_len: Length of wrapped key data
+ * Returns: 0 on success, -1 on error
+ */
+int ra_ukey_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key, size_t key_len);
+
+/*
+ * User key verify - verify user key at index
+ * valid_out: pointer to store result (1=valid, 0=invalid/empty), may be NULL
+ * Returns: 0 on success, -1 on error
+ */
+int ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
+
 #endif /* RADFU_H */

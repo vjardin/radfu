@@ -1314,3 +1314,167 @@ ra_initialize(ra_device_t *dev) {
   printf("Initialize complete - device reset to SSD state\n");
   return 0;
 }
+
+int
+ra_key_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key, size_t key_len) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[64]; /* KYID (1) + WKDT (up to 48) */
+  ssize_t pkt_len, n;
+
+  if (key_len > 48) {
+    warnx("wrapped key too long: %zu bytes (max 48)", key_len);
+    return -1;
+  }
+
+  printf("Setting key at index %u (%zu bytes wrapped key)\n", key_index, key_len);
+
+  /* Pack key data: KYID (1 byte) + WKDT (key_len bytes) */
+  data[0] = key_index;
+  memcpy(&data[1], wrapped_key, key_len);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), KEY_CMD, data, 1 + key_len, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Key setting involves flash writes */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for key setting");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "key setting") < 0)
+    return -1;
+
+  printf("Key set successfully at index %u\n", key_index);
+  return 0;
+}
+
+int
+ra_key_verify(ra_device_t *dev, uint8_t key_index, int *valid_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  printf("Verifying key at index %u\n", key_index);
+
+  /* Key verify command: KYID (1 byte) */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), KEY_VFY_CMD, &key_index, 1, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 1000);
+  if (n < 7) {
+    warnx("short response for key verify");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "key verify") < 0)
+    return -1;
+
+  /* Response contains KVST (key verification status) */
+  int valid = (data_len >= 1 && resp_data[0] == 0x00) ? 1 : 0;
+
+  if (valid)
+    printf("Key at index %u: VALID\n", key_index);
+  else
+    printf("Key at index %u: INVALID or EMPTY\n", key_index);
+
+  if (valid_out != NULL)
+    *valid_out = valid;
+
+  return 0;
+}
+
+int
+ra_ukey_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key, size_t key_len) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  uint8_t data[64]; /* KYID (1) + WKDT (up to 48) */
+  ssize_t pkt_len, n;
+
+  if (key_len > 48) {
+    warnx("wrapped key too long: %zu bytes (max 48)", key_len);
+    return -1;
+  }
+
+  printf("Setting user key at index %u (%zu bytes wrapped key)\n", key_index, key_len);
+
+  /* Pack key data: KYID (1 byte) + WKDT (key_len bytes) */
+  data[0] = key_index;
+  memcpy(&data[1], wrapped_key, key_len);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), UKEY_CMD, data, 1 + key_len, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Key setting involves flash writes */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for user key setting");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "user key setting") < 0)
+    return -1;
+
+  printf("User key set successfully at index %u\n", key_index);
+  return 0;
+}
+
+int
+ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  printf("Verifying user key at index %u\n", key_index);
+
+  /* User key verify command: KYID (1 byte) */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), UKEY_VFY_CMD, &key_index, 1, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 1000);
+  if (n < 7) {
+    warnx("short response for user key verify");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "user key verify") < 0)
+    return -1;
+
+  /* Response contains KVST (key verification status) */
+  int valid = (data_len >= 1 && resp_data[0] == 0x00) ? 1 : 0;
+
+  if (valid)
+    printf("User key at index %u: VALID\n", key_index);
+  else
+    printf("User key at index %u: INVALID or EMPTY\n", key_index);
+
+  if (valid_out != NULL)
+    *valid_out = valid;
+
+  return 0;
+}

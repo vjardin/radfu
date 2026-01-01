@@ -20,6 +20,10 @@
 #define WRI_CMD 0x13         /* Write to flash */
 #define REA_CMD 0x15         /* Read from flash */
 #define CRC_CMD 0x18         /* CRC calculation */
+#define KEY_CMD 0x28         /* Key setting (wrapped key injection) */
+#define KEY_VFY_CMD 0x29     /* Key verify */
+#define UKEY_CMD 0x2A        /* User key setting */
+#define UKEY_VFY_CMD 0x2B    /* User key verify */
 #define DLM_CMD 0x2C         /* DLM state request */
 #define DLM_TRANSIT_CMD 0x71 /* DLM state transit */
 #define IDA_CMD 0x30         /* ID authentication */

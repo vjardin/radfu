@@ -43,6 +43,10 @@ usage(int status) {
       "  param-set <enable|disable>  Enable/disable initialization command\n"
       "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
+      "  key-set <idx> <file>    Inject wrapped key from file at index\n"
+      "  key-verify <idx>        Verify key at index\n"
+      "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
+      "  ukey-verify <idx>       Verify user key at index\n"
       "\n"
       "Options:\n"
       "  -p, --port <dev>     Serial port (auto-detect if omitted)\n"
@@ -141,6 +145,10 @@ enum command {
   CMD_PARAM_SET,
   CMD_INIT,
   CMD_OSIS,
+  CMD_KEY_SET,
+  CMD_KEY_VERIFY,
+  CMD_UKEY_SET,
+  CMD_UKEY_VERIFY,
 };
 
 /* Long-only options use values >= 256 */
@@ -184,6 +192,8 @@ main(int argc, char *argv[]) {
   bool usb_reset = false;
   uint8_t dest_dlm = 0;
   uint8_t param_value = 0;
+  uint8_t key_index = 0;
+  const char *key_file = NULL;
   ra_boundary_t bnd = { 0 };
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
@@ -326,6 +336,28 @@ main(int argc, char *argv[]) {
     cmd = CMD_INIT;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
+  } else if (strcmp(command, "key-set") == 0) {
+    cmd = CMD_KEY_SET;
+    if (optind + 1 >= argc)
+      errx(EXIT_FAILURE, "key-set requires index and file arguments");
+    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+    key_file = argv[optind + 1];
+  } else if (strcmp(command, "key-verify") == 0) {
+    cmd = CMD_KEY_VERIFY;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "key-verify requires index argument");
+    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+  } else if (strcmp(command, "ukey-set") == 0) {
+    cmd = CMD_UKEY_SET;
+    if (optind + 1 >= argc)
+      errx(EXIT_FAILURE, "ukey-set requires index and file arguments");
+    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+    key_file = argv[optind + 1];
+  } else if (strcmp(command, "ukey-verify") == 0) {
+    cmd = CMD_UKEY_VERIFY;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "ukey-verify requires index argument");
+    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
   } else {
     errx(EXIT_FAILURE, "unknown command: %s", command);
   }
@@ -412,6 +444,46 @@ main(int argc, char *argv[]) {
     if (ret == 0)
       ra_osis_print(&status);
   } break;
+  case CMD_KEY_SET: {
+    FILE *fp = fopen(key_file, "rb");
+    if (fp == NULL) {
+      warn("cannot open key file: %s", key_file);
+      ret = -1;
+      break;
+    }
+    uint8_t key_data[64];
+    size_t key_len = fread(key_data, 1, sizeof(key_data), fp);
+    fclose(fp);
+    if (key_len == 0) {
+      warnx("empty key file: %s", key_file);
+      ret = -1;
+      break;
+    }
+    ret = ra_key_set(&dev, key_index, key_data, key_len);
+  } break;
+  case CMD_KEY_VERIFY:
+    ret = ra_key_verify(&dev, key_index, NULL);
+    break;
+  case CMD_UKEY_SET: {
+    FILE *fp = fopen(key_file, "rb");
+    if (fp == NULL) {
+      warn("cannot open key file: %s", key_file);
+      ret = -1;
+      break;
+    }
+    uint8_t key_data[64];
+    size_t key_len = fread(key_data, 1, sizeof(key_data), fp);
+    fclose(fp);
+    if (key_len == 0) {
+      warnx("empty key file: %s", key_file);
+      ret = -1;
+      break;
+    }
+    ret = ra_ukey_set(&dev, key_index, key_data, key_len);
+  } break;
+  case CMD_UKEY_VERIFY:
+    ret = ra_ukey_verify(&dev, key_index, NULL);
+    break;
   default:
     break;
   }
