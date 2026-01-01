@@ -502,6 +502,7 @@ ra_authenticate(ra_device_t *dev, const uint8_t *id_code) {
   if (unpack_with_error(resp, n, data, &data_len, "ID authentication") < 0)
     return -1;
 
+  dev->authenticated = true;
   fprintf(stderr, "ID authentication successful\n");
   return 0;
 }

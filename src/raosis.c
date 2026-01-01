@@ -31,12 +31,14 @@ ra_osis_detect(ra_device_t *dev, osis_status_t *status) {
    * 1. Unlocked (factory default, no protection)
    * 2. Locked but user authenticated with -i option
    *
-   * We can't distinguish these cases without tracking auth state,
-   * but for practical purposes, "device is accessible" is what matters.
+   * We distinguish these cases by checking if authentication was performed.
    */
-  (void)dev; /* Currently unused, but may be needed for future enhancements */
+  if (dev->authenticated) {
+    status->mode = OSIS_MODE_LOCKED;
+  } else {
+    status->mode = OSIS_MODE_UNLOCKED;
+  }
 
-  status->mode = OSIS_MODE_UNLOCKED;
   return 0;
 }
 

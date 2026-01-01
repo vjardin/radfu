@@ -40,6 +40,7 @@ typedef struct {
   int timeout_ms;
   ra_area_t chip_layout[MAX_AREAS];
   int sel_area;
+  bool authenticated; /* True if ID authentication was performed */
 } ra_device_t;
 
 /*
