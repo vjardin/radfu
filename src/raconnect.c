@@ -300,17 +300,14 @@ ra_confirm(ra_device_t *dev) {
     if (n == 1) {
       if (resp == BOOT_CODE_M4) {
         fprintf(stderr, "Boot code 0xC3 (Cortex-M4/M23)\n");
-        usleep(50000); /* Wait 50ms for bootloader to transition */
         return 0;
       }
       if (resp == BOOT_CODE_M33) {
         fprintf(stderr, "Boot code 0xC6 (Cortex-M33)\n");
-        usleep(100000); /* Wait 100ms for bootloader to transition */
         return 0;
       }
       if (resp == BOOT_CODE_M85) {
         fprintf(stderr, "Boot code 0xC5 (Cortex-M85)\n");
-        usleep(50000); /* Wait 50ms for bootloader to transition */
         return 0;
       }
       /* Unexpected response */
