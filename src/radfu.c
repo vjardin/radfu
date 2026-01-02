@@ -618,7 +618,7 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  n = ra_recv(dev, resp, 7, 1000); /* Erase takes longer */
+  n = ra_recv(dev, resp, sizeof(resp), 5000); /* Erase takes longer */
   if (n < 7) {
     warnx("short response for erase");
     return -1;
@@ -773,7 +773,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
     return -1;
   }
 
-  n = ra_recv(dev, resp, 7, 500);
+  n = ra_recv(dev, resp, sizeof(resp), 1000);
   if (n < 7) {
     warnx("short response for write init");
     close(fd);
@@ -817,7 +817,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
       return -1;
     }
 
-    n = ra_recv(dev, resp, 7, 500);
+    n = ra_recv(dev, resp, sizeof(resp), 2000);
     if (n < 7) {
       warnx("short response during write");
       close(fd);
