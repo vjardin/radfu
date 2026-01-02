@@ -258,7 +258,6 @@ ra_inquire(ra_device_t *dev) {
   if (n < 0)
     return -1;
 
-  fprintf(stderr, "inquire: n=%zd, resp=0x%02x\n", n, n > 0 ? resp[0] : 0);
   if (n == 0 || resp[0] == SYNC_BYTE) {
     /* Not connected yet (received sync echo, not command response) */
     return 0;
