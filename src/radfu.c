@@ -355,12 +355,6 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     n = ra_recv(dev, resp, sizeof(resp), 500);
     if (n < 7) {
       warnx("short response for area %d (got %zd bytes)", i, n);
-      if (n > 0) {
-        fprintf(stderr, "  resp: ");
-        for (ssize_t j = 0; j < n; j++)
-          fprintf(stderr, "%02x ", resp[j]);
-        fprintf(stderr, "\n");
-      }
       return -1;
     }
 
@@ -587,20 +581,10 @@ ra_authenticate(ra_device_t *dev, const uint8_t *id_code) {
   if (pkt_len < 0)
     return -1;
 
-  fprintf(stderr, "IDA send %zd bytes:", pkt_len);
-  for (ssize_t i = 0; i < pkt_len; i++)
-    fprintf(stderr, " %02X", pkt[i]);
-  fprintf(stderr, "\n");
-
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
   n = ra_recv(dev, resp, sizeof(resp), 500);
-  fprintf(stderr, "IDA recv %zd bytes:", n);
-  for (ssize_t i = 0; i < n && i < 16; i++)
-    fprintf(stderr, " %02X", resp[i]);
-  fprintf(stderr, "\n");
-
   if (n < 7) {
     warnx("short response for ID authentication");
     return -1;
