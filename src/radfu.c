@@ -635,7 +635,7 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { 0x00 };
+  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
   int fd;
@@ -1488,8 +1488,8 @@ ra_key_verify(ra_device_t *dev, uint8_t key_index, int *valid_out) {
   if (unpack_with_error(resp, n, resp_data, &data_len, "key verify") < 0)
     return -1;
 
-  /* Response contains KVST (key verification status) */
-  int valid = (data_len >= 1 && resp_data[0] == 0x00) ? 1 : 0;
+  /* Response contains KVST (key verification status): STATUS_OK = valid */
+  int valid = (data_len >= 1 && resp_data[0] == STATUS_OK) ? 1 : 0;
 
   if (valid)
     printf("Key at index %u: VALID\n", key_index);
@@ -1570,8 +1570,8 @@ ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out) {
   if (unpack_with_error(resp, n, resp_data, &data_len, "user key verify") < 0)
     return -1;
 
-  /* Response contains KVST (key verification status) */
-  int valid = (data_len >= 1 && resp_data[0] == 0x00) ? 1 : 0;
+  /* Response contains KVST (key verification status): STATUS_OK = valid */
+  int valid = (data_len >= 1 && resp_data[0] == STATUS_OK) ? 1 : 0;
 
   if (valid)
     printf("User key at index %u: VALID\n", key_index);

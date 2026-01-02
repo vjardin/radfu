@@ -16,20 +16,20 @@ static const struct {
   const char *name;
   const char *desc;
 } error_codes[] = {
-  { 0x0C, "ERR_UNSU", "unsupported command"                },
-  { 0xC1, "ERR_PCKT", "packet error (length/ETX)"          },
-  { 0xC2, "ERR_CHKS", "checksum mismatch"                  },
-  { 0xC3, "ERR_FLOW", "command flow error"                 },
-  { 0xD0, "ERR_ADDR", "invalid address"                    },
-  { 0xD4, "ERR_BAUD", "baud rate margin error"             },
-  { 0xD5, "ERR_CMD",  "command not accepted (wrong state)" },
-  { 0xDA, "ERR_PROT", "protection error"                   },
-  { 0xDB, "ERR_ID",   "ID authentication mismatch"         },
-  { 0xDC, "ERR_SERI", "serial programming disabled"        },
-  { 0xE1, "ERR_ERA",  "erase failed"                       },
-  { 0xE2, "ERR_WRI",  "write failed"                       },
-  { 0xE7, "ERR_SEQ",  "sequencer error"                    },
-  { 0,    NULL,       NULL                                 }
+  { ERR_UNSU, "ERR_UNSU", "unsupported command"                },
+  { ERR_PCKT, "ERR_PCKT", "packet error (length/ETX)"          },
+  { ERR_CHKS, "ERR_CHKS", "checksum mismatch"                  },
+  { ERR_FLOW, "ERR_FLOW", "command flow error"                 },
+  { ERR_ADDR, "ERR_ADDR", "invalid address"                    },
+  { ERR_BAUD, "ERR_BAUD", "baud rate margin error"             },
+  { ERR_CMD,  "ERR_CMD",  "command not accepted (wrong state)" },
+  { ERR_PROT, "ERR_PROT", "protection error"                   },
+  { ERR_ID,   "ERR_ID",   "ID authentication mismatch"         },
+  { ERR_SERI, "ERR_SERI", "serial programming disabled"        },
+  { ERR_ERA,  "ERR_ERA",  "erase failed"                       },
+  { ERR_WRI,  "ERR_WRI",  "write failed"                       },
+  { ERR_SEQ,  "ERR_SEQ",  "sequencer error"                    },
+  { 0,        NULL,       NULL                                 }
 };
 
 const char *
