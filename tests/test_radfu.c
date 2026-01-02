@@ -233,23 +233,23 @@ setup_test_device(void) {
   /* Code Flash: 512KB, 8KB erase, 128B write */
   dev.chip_layout[0].sad = 0x00000000;
   dev.chip_layout[0].ead = 0x0007FFFF;
-  dev.chip_layout[0].eau = 0x2000;  /* 8KB */
-  dev.chip_layout[0].wau = 0x80;    /* 128B */
-  dev.chip_layout[0].rau = 0x04;    /* 4B */
-  dev.chip_layout[0].cau = 0x04;    /* 4B */
+  dev.chip_layout[0].eau = 0x2000; /* 8KB */
+  dev.chip_layout[0].wau = 0x80;   /* 128B */
+  dev.chip_layout[0].rau = 0x04;   /* 4B */
+  dev.chip_layout[0].cau = 0x04;   /* 4B */
 
   /* Data Flash: 8KB, 64B erase, 4B write */
   dev.chip_layout[1].sad = 0x08000000;
   dev.chip_layout[1].ead = 0x08001FFF;
-  dev.chip_layout[1].eau = 0x40;   /* 64B */
-  dev.chip_layout[1].wau = 0x04;   /* 4B */
+  dev.chip_layout[1].eau = 0x40; /* 64B */
+  dev.chip_layout[1].wau = 0x04; /* 4B */
   dev.chip_layout[1].rau = 0x04;
   dev.chip_layout[1].cau = 0x04;
 
   /* Config: no erase */
   dev.chip_layout[2].sad = 0x01000000;
   dev.chip_layout[2].ead = 0x010001FF;
-  dev.chip_layout[2].eau = 0;      /* No erase */
+  dev.chip_layout[2].eau = 0; /* No erase */
   dev.chip_layout[2].wau = 0x04;
   dev.chip_layout[2].rau = 0x04;
   dev.chip_layout[2].cau = 0x04;

@@ -27,11 +27,14 @@ test_mock_build_sig_response(void **state) {
   uint8_t buf[256];
   size_t len;
 
-  len = ra_mock_build_sig_response(buf, sizeof(buf),
-      1000000,        /* max baud */
-      4,              /* num areas */
-      0x01,           /* typ: GrpA/GrpB */
-      1, 0, 0,        /* BFV 1.0.0 */
+  len = ra_mock_build_sig_response(buf,
+      sizeof(buf),
+      1000000, /* max baud */
+      4,       /* num areas */
+      0x01,    /* typ: GrpA/GrpB */
+      1,
+      0,
+      0, /* BFV 1.0.0 */
       "R7FA4M2AD3CFP");
 
   assert_true(len > 0);
@@ -50,8 +53,8 @@ test_mock_build_sig_response(void **state) {
   assert_int_equal(data_len, 41);
 
   /* Verify RMB (max baud) */
-  uint32_t rmb = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
-                 ((uint32_t)data[2] << 8) | data[3];
+  uint32_t rmb =
+      ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
   assert_int_equal(rmb, 1000000);
 
   /* Verify NOA */
@@ -76,14 +79,15 @@ test_mock_build_area_response(void **state) {
   uint8_t buf[64];
   size_t len;
 
-  len = ra_mock_build_area_response(buf, sizeof(buf),
-      0x00,           /* KOA: User/Code area 0 */
-      0x00000000,     /* SAD */
-      0x0007FFFF,     /* EAD: 512KB */
-      0x00002000,     /* EAU: 8KB */
-      0x00000080,     /* WAU: 128B */
-      0x00000004,     /* RAU: 4B */
-      0x00000004);    /* CAU: 4B */
+  len = ra_mock_build_area_response(buf,
+      sizeof(buf),
+      0x00,        /* KOA: User/Code area 0 */
+      0x00000000,  /* SAD */
+      0x0007FFFF,  /* EAD: 512KB */
+      0x00002000,  /* EAU: 8KB */
+      0x00000080,  /* WAU: 128B */
+      0x00000004,  /* RAU: 4B */
+      0x00000004); /* CAU: 4B */
 
   assert_true(len > 0);
 
@@ -100,18 +104,18 @@ test_mock_build_area_response(void **state) {
   assert_int_equal(data[0], 0x00);
 
   /* Verify SAD */
-  uint32_t sad = ((uint32_t)data[1] << 24) | ((uint32_t)data[2] << 16) |
-                 ((uint32_t)data[3] << 8) | data[4];
+  uint32_t sad =
+      ((uint32_t)data[1] << 24) | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 8) | data[4];
   assert_int_equal(sad, 0x00000000);
 
   /* Verify EAD */
-  uint32_t ead = ((uint32_t)data[5] << 24) | ((uint32_t)data[6] << 16) |
-                 ((uint32_t)data[7] << 8) | data[8];
+  uint32_t ead =
+      ((uint32_t)data[5] << 24) | ((uint32_t)data[6] << 16) | ((uint32_t)data[7] << 8) | data[8];
   assert_int_equal(ead, 0x0007FFFF);
 
   /* Verify EAU */
-  uint32_t eau = ((uint32_t)data[9] << 24) | ((uint32_t)data[10] << 16) |
-                 ((uint32_t)data[11] << 8) | data[12];
+  uint32_t eau =
+      ((uint32_t)data[9] << 24) | ((uint32_t)data[10] << 16) | ((uint32_t)data[11] << 8) | data[12];
   assert_int_equal(eau, 0x00002000);
 }
 
@@ -142,12 +146,13 @@ test_mock_build_boundary_response(void **state) {
   uint8_t buf[32];
   size_t len;
 
-  len = ra_mock_build_boundary_response(buf, sizeof(buf),
-      64,   /* CFS1: 64KB */
-      128,  /* CFS2: 128KB */
-      8,    /* DFS: 8KB */
-      16,   /* SRS1: 16KB */
-      32);  /* SRS2: 32KB */
+  len = ra_mock_build_boundary_response(buf,
+      sizeof(buf),
+      64,  /* CFS1: 64KB */
+      128, /* CFS2: 128KB */
+      8,   /* DFS: 8KB */
+      16,  /* SRS1: 16KB */
+      32); /* SRS2: 32KB */
 
   assert_true(len > 0);
 
@@ -214,12 +219,12 @@ test_mock_multiple_responses(void **state) {
   /* Add multiple responses (simulating area info query) */
   uint8_t buf[64];
 
-  ra_mock_build_area_response(buf, sizeof(buf), 0x00, 0x00000000, 0x0007FFFF,
-      0x2000, 0x80, 0x04, 0x04);
+  ra_mock_build_area_response(
+      buf, sizeof(buf), 0x00, 0x00000000, 0x0007FFFF, 0x2000, 0x80, 0x04, 0x04);
   ra_mock_add_response(&mock, buf, 31);
 
-  ra_mock_build_area_response(buf, sizeof(buf), 0x10, 0x08000000, 0x08001FFF,
-      0x40, 0x04, 0x04, 0x04);
+  ra_mock_build_area_response(
+      buf, sizeof(buf), 0x10, 0x08000000, 0x08001FFF, 0x40, 0x04, 0x04, 0x04);
   ra_mock_add_response(&mock, buf, 31);
 
   assert_int_equal(mock.response_count, 2);
@@ -305,8 +310,8 @@ test_protocol_sig_roundtrip(void **state) {
 
   /* Build a SIG response */
   uint8_t resp_buf[256];
-  size_t resp_len = ra_mock_build_sig_response(resp_buf, sizeof(resp_buf),
-      1000000, 4, 0x01, 1, 0, 0, "R7FA4M2AD3CFP");
+  size_t resp_len = ra_mock_build_sig_response(
+      resp_buf, sizeof(resp_buf), 1000000, 4, 0x01, 1, 0, 0, "R7FA4M2AD3CFP");
   assert_true(resp_len > 0);
 
   /* Setup mock */
@@ -413,8 +418,7 @@ test_protocol_ida_roundtrip(void **state) {
 
   /* Build an IDA command packet with 16-byte ID code */
   uint8_t id_code[16] = {
-    0x45, 0x66, 0x73, 0x89, 0x9A, 0xAB, 0xBC, 0xCD,
-    0xDE, 0xEF, 0xF0, 0x01, 0x12, 0x23, 0x34, 0x45
+    0x45, 0x66, 0x73, 0x89, 0x9A, 0xAB, 0xBC, 0xCD, 0xDE, 0xEF, 0xF0, 0x01, 0x12, 0x23, 0x34, 0x45
   };
 
   uint8_t cmd_buf[64];

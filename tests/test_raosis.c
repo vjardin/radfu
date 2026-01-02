@@ -24,14 +24,11 @@ test_osis_mode_str(void **state) {
   (void)state;
 
   /* Test all defined OSIS modes */
-  assert_string_equal(ra_osis_mode_str(OSIS_MODE_UNLOCKED),
-      "Unlocked (no ID protection)");
-  assert_string_equal(ra_osis_mode_str(OSIS_MODE_LOCKED),
-      "Locked (ID authentication required)");
-  assert_string_equal(ra_osis_mode_str(OSIS_MODE_DISABLED),
-      "Disabled (serial programming blocked)");
-  assert_string_equal(ra_osis_mode_str(OSIS_MODE_UNKNOWN),
-      "Unknown");
+  assert_string_equal(ra_osis_mode_str(OSIS_MODE_UNLOCKED), "Unlocked (no ID protection)");
+  assert_string_equal(ra_osis_mode_str(OSIS_MODE_LOCKED), "Locked (ID authentication required)");
+  assert_string_equal(
+      ra_osis_mode_str(OSIS_MODE_DISABLED), "Disabled (serial programming blocked)");
+  assert_string_equal(ra_osis_mode_str(OSIS_MODE_UNKNOWN), "Unknown");
 
   /* Test invalid mode */
   assert_string_equal(ra_osis_mode_str(99), "Invalid");
@@ -49,7 +46,7 @@ test_osis_detect_unlocked(void **state) {
   osis_status_t status;
 
   memset(&dev, 0, sizeof(dev));
-  dev.authenticated = false;  /* No ID auth performed */
+  dev.authenticated = false; /* No ID auth performed */
 
   int ret = ra_osis_detect(&dev, &status);
   assert_int_equal(ret, 0);
@@ -64,7 +61,7 @@ test_osis_detect_locked(void **state) {
   osis_status_t status;
 
   memset(&dev, 0, sizeof(dev));
-  dev.authenticated = true;  /* ID auth was performed */
+  dev.authenticated = true; /* ID auth was performed */
 
   int ret = ra_osis_detect(&dev, &status);
   assert_int_equal(ret, 0);

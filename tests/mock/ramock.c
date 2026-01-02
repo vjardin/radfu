@@ -131,9 +131,14 @@ ra_mock_setup_device(ra_device_t *dev, ra_mock_t *mock) {
  */
 
 size_t
-ra_mock_build_sig_response(uint8_t *buf, size_t buflen,
-    uint32_t max_baud, uint8_t num_areas, uint8_t typ,
-    uint8_t bfv_major, uint8_t bfv_minor, uint8_t bfv_build,
+ra_mock_build_sig_response(uint8_t *buf,
+    size_t buflen,
+    uint32_t max_baud,
+    uint8_t num_areas,
+    uint8_t typ,
+    uint8_t bfv_major,
+    uint8_t bfv_minor,
+    uint8_t bfv_build,
     const char *product_name) {
 
   /* Build signature data: RMB(4) + NOA(1) + TYP(1) + BFV(3) + DID(16) + PTN(16) = 41 bytes */
@@ -158,7 +163,7 @@ ra_mock_build_sig_response(uint8_t *buf, size_t buflen,
   data[8] = bfv_build;
 
   /* DID: Device ID (16 bytes) - fill with dummy data */
-  data[9] = 'T';   /* Wafer fab */
+  data[9] = 'T'; /* Wafer fab */
   data[10] = 'T';
   data[11] = 0x51; /* Year/month: 2015-01 */
   data[12] = 0x01; /* Day */
@@ -177,7 +182,8 @@ ra_mock_build_sig_response(uint8_t *buf, size_t buflen,
 
   /* PTN: Product type name (16 bytes, space-padded) */
   size_t name_len = product_name ? strlen(product_name) : 0;
-  if (name_len > 16) name_len = 16;
+  if (name_len > 16)
+    name_len = 16;
   if (product_name)
     memcpy(&data[25], product_name, name_len);
   for (size_t i = name_len; i < 16; i++)
@@ -188,9 +194,15 @@ ra_mock_build_sig_response(uint8_t *buf, size_t buflen,
 }
 
 size_t
-ra_mock_build_area_response(uint8_t *buf, size_t buflen,
-    uint8_t koa, uint32_t sad, uint32_t ead,
-    uint32_t eau, uint32_t wau, uint32_t rau, uint32_t cau) {
+ra_mock_build_area_response(uint8_t *buf,
+    size_t buflen,
+    uint8_t koa,
+    uint32_t sad,
+    uint32_t ead,
+    uint32_t eau,
+    uint32_t wau,
+    uint32_t rau,
+    uint32_t cau) {
 
   /* Area data: KOA(1) + SAD(4) + EAD(4) + EAU(4) + WAU(4) + RAU(4) + CAU(4) = 25 bytes */
   uint8_t data[25];
@@ -250,8 +262,13 @@ ra_mock_build_ok_response(uint8_t *buf, size_t buflen, uint8_t cmd) {
 }
 
 size_t
-ra_mock_build_boundary_response(uint8_t *buf, size_t buflen,
-    uint16_t cfs1, uint16_t cfs2, uint16_t dfs, uint16_t srs1, uint16_t srs2) {
+ra_mock_build_boundary_response(uint8_t *buf,
+    size_t buflen,
+    uint16_t cfs1,
+    uint16_t cfs2,
+    uint16_t dfs,
+    uint16_t srs1,
+    uint16_t srs2) {
 
   /* Boundary data: CFS1(2) + CFS2(2) + DFS(2) + SRS1(2) + SRS2(2) = 10 bytes */
   uint8_t data[10];

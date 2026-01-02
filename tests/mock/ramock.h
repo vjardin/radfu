@@ -40,9 +40,9 @@ typedef struct {
   size_t sent_count;
 
   /* Error simulation */
-  int fail_send;      /* If set, ra_mock_send returns -1 */
-  int fail_recv;      /* If set, ra_mock_recv returns -1 */
-  int timeout_recv;   /* If set, ra_mock_recv returns 0 (timeout) */
+  int fail_send;    /* If set, ra_mock_send returns -1 */
+  int fail_recv;    /* If set, ra_mock_recv returns -1 */
+  int timeout_recv; /* If set, ra_mock_recv returns 0 (timeout) */
 } ra_mock_t;
 
 /*
@@ -108,18 +108,29 @@ void ra_mock_setup_device(ra_device_t *dev, ra_mock_t *mock);
  * Populates provided buffer with valid signature packet
  * Returns: packet length
  */
-size_t ra_mock_build_sig_response(uint8_t *buf, size_t buflen,
-    uint32_t max_baud, uint8_t num_areas, uint8_t typ,
-    uint8_t bfv_major, uint8_t bfv_minor, uint8_t bfv_build,
+size_t ra_mock_build_sig_response(uint8_t *buf,
+    size_t buflen,
+    uint32_t max_baud,
+    uint8_t num_areas,
+    uint8_t typ,
+    uint8_t bfv_major,
+    uint8_t bfv_minor,
+    uint8_t bfv_build,
     const char *product_name);
 
 /*
  * Build an area info (ARE) response
  * Returns: packet length
  */
-size_t ra_mock_build_area_response(uint8_t *buf, size_t buflen,
-    uint8_t koa, uint32_t sad, uint32_t ead,
-    uint32_t eau, uint32_t wau, uint32_t rau, uint32_t cau);
+size_t ra_mock_build_area_response(uint8_t *buf,
+    size_t buflen,
+    uint8_t koa,
+    uint32_t sad,
+    uint32_t ead,
+    uint32_t eau,
+    uint32_t wau,
+    uint32_t rau,
+    uint32_t cau);
 
 /*
  * Build a DLM state response
@@ -137,7 +148,12 @@ size_t ra_mock_build_ok_response(uint8_t *buf, size_t buflen, uint8_t cmd);
  * Build a boundary response
  * Returns: packet length
  */
-size_t ra_mock_build_boundary_response(uint8_t *buf, size_t buflen,
-    uint16_t cfs1, uint16_t cfs2, uint16_t dfs, uint16_t srs1, uint16_t srs2);
+size_t ra_mock_build_boundary_response(uint8_t *buf,
+    size_t buflen,
+    uint16_t cfs1,
+    uint16_t cfs2,
+    uint16_t dfs,
+    uint16_t srs1,
+    uint16_t srs2);
 
 #endif /* RAMOCK_H */
