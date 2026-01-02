@@ -141,10 +141,3 @@ ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len) {
   IOObjectRelease(iter);
   return -1;
 }
-
-int
-ra_usb_reset(void) {
-  fprintf(stderr, "USB reset not supported on macOS\n");
-  fprintf(stderr, "Please manually reset the board using the RESET button\n");
-  return -1;
-}
