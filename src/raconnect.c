@@ -253,7 +253,7 @@ ra_inquire(ra_device_t *dev) {
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  uint8_t resp[1];
+  uint8_t resp[4];
   ssize_t n = ra_recv(dev, resp, 1, dev->timeout_ms);
   if (n < 0)
     return -1;
@@ -264,11 +264,24 @@ ra_inquire(ra_device_t *dev) {
     return 0;
   }
 
-  /* Read rest of response */
-  uint8_t rest[6];
-  n = ra_recv(dev, rest, 6, dev->timeout_ms);
-  if (n < 6)
+  /* Read packet header (LNH, LNL, RES) to get length */
+  n = ra_recv(dev, resp, 3, dev->timeout_ms);
+  if (n < 3)
     return -1;
+
+  /* Calculate remaining bytes: data_len + SUM + ETX */
+  uint16_t data_len = ((uint16_t)resp[0] << 8) | resp[1];
+  size_t remaining = (data_len > 1 ? data_len - 1 : 0) + 2;
+
+  /* Drain the rest of the response to clear the buffer */
+  uint8_t drain[256];
+  while (remaining > 0) {
+    size_t to_read = remaining > sizeof(drain) ? sizeof(drain) : remaining;
+    n = ra_recv(dev, drain, to_read, dev->timeout_ms);
+    if (n <= 0)
+      break;
+    remaining -= n;
+  }
 
   /* Already connected */
   return 1;
