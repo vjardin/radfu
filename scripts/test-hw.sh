@@ -4,8 +4,7 @@
 #
 # Requirements:
 #   - J16 shorted for boot mode
-#   - Board connected via USB
-#   - Optional: sudo setcap cap_dac_override+ep ./build/radfu
+#   - Board connected via USB or UART (use -t for UART mode)
 #
 # SAFETY: This script avoids any operations that could lock the board:
 #   - No dlm-transit to lck_dbg or lck_boot
@@ -21,6 +20,7 @@ TEST_FILE="$TMPDIR/radfu_test_$$"
 # Test configuration
 VERBOSE=${VERBOSE:-0}
 RUN_WRITE_TESTS=${RUN_WRITE_TESTS:-0}
+UART_PORT=${UART_PORT:-}
 
 # Colors for output
 RED='\033[0;31m'
@@ -48,14 +48,24 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 run_radfu() {
     local cmd="$1"
     shift
-    if [ "$VERBOSE" -eq 1 ]; then
-        log_info "Running: $RADFU $cmd $*"
+    local uart_opts=""
+    if [ -n "$UART_PORT" ]; then
+        uart_opts="-u -p $UART_PORT"
     fi
-    "$RADFU" "$cmd" "$@" 2>&1
+    if [ "$VERBOSE" -eq 1 ]; then
+        log_info "Running: $RADFU $uart_opts $cmd $*"
+    fi
+    # shellcheck disable=SC2086
+    "$RADFU" $uart_opts "$cmd" "$@" 2>&1
 }
 
 run_radfu_quiet() {
-    "$RADFU" "$@" >/dev/null 2>&1
+    local uart_opts=""
+    if [ -n "$UART_PORT" ]; then
+        uart_opts="-u -p $UART_PORT"
+    fi
+    # shellcheck disable=SC2086
+    "$RADFU" $uart_opts "$@" >/dev/null 2>&1
 }
 
 test_info() {
@@ -360,11 +370,21 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Check device is connected (just try to list it)
-    if ! ls /dev/ttyACM* >/dev/null 2>&1 && ! ls /dev/ttyUSB* >/dev/null 2>&1; then
-        log_fail "No serial device found"
-        log_info "Check: J16 shorted, USB connected, board powered"
-        exit 1
+    # Check device is connected
+    if [ -n "$UART_PORT" ]; then
+        # UART mode: check specified port exists
+        if [ ! -c "$UART_PORT" ]; then
+            log_fail "UART port not found: $UART_PORT"
+            exit 1
+        fi
+        log_info "Using UART mode: $UART_PORT"
+    else
+        # USB mode: check for any ttyACM device
+        if ! ls /dev/ttyACM* >/dev/null 2>&1 && ! ls /dev/ttyUSB* >/dev/null 2>&1; then
+            log_fail "No serial device found"
+            log_info "Check: J16 shorted, USB connected, board powered"
+            exit 1
+        fi
     fi
 
     # Quick connectivity test
@@ -384,6 +404,7 @@ Usage: $0 [OPTIONS] [TESTS...]
 Options:
   -v, --verbose       Show detailed output
   -w, --write-tests   Enable write/erase tests (modifies data flash)
+  -t, --tty <port>    Use UART mode with specified port (default: USB)
   -h, --help          Show this help
 
 Tests (default: all safe tests):
@@ -404,11 +425,13 @@ Environment:
   RADFU             Path to radfu binary (default: ./build/radfu)
   VERBOSE=1         Enable verbose output
   RUN_WRITE_TESTS=1 Enable write tests
+  UART_PORT         UART port for -t option (default: /dev/ttyUSB0)
 
 Examples:
-  $0                    # Run all safe tests
-  $0 -v info dlm        # Run specific tests verbosely
-  $0 -w all             # Run all tests including write
+  $0                           # Run all safe tests via USB
+  $0 -v info dlm               # Run specific tests verbosely
+  $0 -w all                    # Run all tests including write
+  $0 -t /dev/ttyUSB0           # Run tests via UART
 EOF
     exit 0
 }
@@ -423,6 +446,10 @@ while [ $# -gt 0 ]; do
         -w|--write-tests)
             RUN_WRITE_TESTS=1
             shift
+            ;;
+        -t|--tty)
+            UART_PORT="${2:-/dev/ttyUSB0}"
+            shift 2
             ;;
         -h|--help)
             usage
