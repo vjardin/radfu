@@ -82,6 +82,16 @@ const char *ra_dlm_state_name(uint8_t code);
 #define DLM_STATE_RMA_REQ 0x07  /* RMA Request */
 #define DLM_STATE_RMA_ACK 0x08  /* RMA Acknowledged */
 
+/* Device type (TYP) codes per spec 6.15.2.2 */
+#define TYP_GRP_AB 0x01 /* GrpA/GrpB: RA4M2/3, RA6M4/5, RA4E1, RA6E1 */
+#define TYP_GRP_C 0x02  /* GrpC: RA6T2 */
+#define TYP_GRP_D 0x05  /* GrpD: RA4E2, RA6E2, RA4T1, RA6T3 */
+
+/* Kind of Area (KOA) type codes per spec 6.16.2.2 */
+#define KOA_TYPE_CODE 0x0   /* User/Code flash area */
+#define KOA_TYPE_DATA 0x1   /* Data flash area */
+#define KOA_TYPE_CONFIG 0x2 /* Config area */
+
 /*
  * Transition DLM state without authentication
  * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)

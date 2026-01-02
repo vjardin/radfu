@@ -128,19 +128,19 @@ test_get_area_type_koa(void **state) {
   /* KOA format: 0xTN where T=type, N=area index */
 
   /* Type 0: User/Code */
-  assert_string_equal(get_area_type_koa(0x00), "User/Code");
-  assert_string_equal(get_area_type_koa(0x01), "User/Code");
-  assert_string_equal(get_area_type_koa(0x0F), "User/Code");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x00), "User/Code");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x01), "User/Code");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x0F), "User/Code");
 
   /* Type 1: Data */
-  assert_string_equal(get_area_type_koa(0x10), "Data");
-  assert_string_equal(get_area_type_koa(0x11), "Data");
-  assert_string_equal(get_area_type_koa(0x1F), "Data");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x00), "Data");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x01), "Data");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x0F), "Data");
 
   /* Type 2: Config */
-  assert_string_equal(get_area_type_koa(0x20), "Config");
-  assert_string_equal(get_area_type_koa(0x21), "Config");
-  assert_string_equal(get_area_type_koa(0x2F), "Config");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x00), "Config");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x01), "Config");
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x0F), "Config");
 
   /* Unknown types */
   assert_string_equal(get_area_type_koa(0x30), "Unknown");
@@ -156,9 +156,9 @@ test_get_device_group(void **state) {
   (void)state;
 
   /* Test known device groups per spec 6.15.2.2 */
-  assert_string_equal(get_device_group(0x01), "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)");
-  assert_string_equal(get_device_group(0x02), "GrpC (RA6T2)");
-  assert_string_equal(get_device_group(0x05), "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)");
+  assert_string_equal(get_device_group(TYP_GRP_AB), "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)");
+  assert_string_equal(get_device_group(TYP_GRP_C), "GrpC (RA6T2)");
+  assert_string_equal(get_device_group(TYP_GRP_D), "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)");
 
   /* Unknown types */
   assert_string_equal(get_device_group(0x00), "Unknown");

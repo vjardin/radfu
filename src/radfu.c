@@ -270,11 +270,11 @@ STATIC const char *
 get_area_type_koa(uint8_t koa) {
   uint8_t type = (koa >> 4) & 0x0F;
   switch (type) {
-  case 0x0:
+  case KOA_TYPE_CODE:
     return "User/Code";
-  case 0x1:
+  case KOA_TYPE_DATA:
     return "Data";
-  case 0x2:
+  case KOA_TYPE_CONFIG:
     return "Config";
   default:
     return "Unknown";
@@ -287,11 +287,11 @@ get_area_type_koa(uint8_t koa) {
 STATIC const char *
 get_device_group(uint8_t typ) {
   switch (typ) {
-  case 0x01:
+  case TYP_GRP_AB:
     return "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)";
-  case 0x02:
+  case TYP_GRP_C:
     return "GrpC (RA6T2)";
-  case 0x05:
+  case TYP_GRP_D:
     return "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)";
   default:
     return "Unknown";
@@ -954,15 +954,15 @@ static const struct {
   const char *name;
   const char *desc;
 } dlm_states[] = {
-  { 0x01, "CM",       "Chip Manufacturing"                         },
-  { 0x02, "SSD",      "Secure Software Development"                },
-  { 0x03, "NSECSD",   "Non-Secure Software Development"            },
-  { 0x04, "DPL",      "Deployed"                                   },
-  { 0x05, "LCK_DBG",  "Locked Debug"                               },
-  { 0x06, "LCK_BOOT", "Locked Boot Interface"                      },
-  { 0x07, "RMA_REQ",  "Return Material Authorization Request"      },
-  { 0x08, "RMA_ACK",  "Return Material Authorization Acknowledged" },
-  { 0,    NULL,       NULL                                         },
+  { DLM_STATE_CM,       "CM",       "Chip Manufacturing"                         },
+  { DLM_STATE_SSD,      "SSD",      "Secure Software Development"                },
+  { DLM_STATE_NSECSD,   "NSECSD",   "Non-Secure Software Development"            },
+  { DLM_STATE_DPL,      "DPL",      "Deployed"                                   },
+  { DLM_STATE_LCK_DBG,  "LCK_DBG",  "Locked Debug"                               },
+  { DLM_STATE_LCK_BOOT, "LCK_BOOT", "Locked Boot Interface"                      },
+  { DLM_STATE_RMA_REQ,  "RMA_REQ",  "Return Material Authorization Request"      },
+  { DLM_STATE_RMA_ACK,  "RMA_ACK",  "Return Material Authorization Acknowledged" },
+  { 0,                  NULL,       NULL                                         },
 };
 
 const char *
@@ -1343,12 +1343,6 @@ ra_set_param(ra_device_t *dev, uint8_t param_id, uint8_t value) {
   return 0;
 }
 
-/* DLM state codes for initialize command */
-#define DLM_CM 0x01
-#define DLM_SSD 0x02
-#define DLM_NSECSD 0x03
-#define DLM_DPL 0x04
-
 int
 ra_initialize(ra_device_t *dev) {
   uint8_t pkt[MAX_PKT_LEN];
@@ -1384,13 +1378,14 @@ ra_initialize(ra_device_t *dev) {
   current_dlm = resp_data[0];
 
   /* Check if we can execute initialize from current state */
-  if (current_dlm == DLM_CM) {
+  if (current_dlm == DLM_STATE_CM) {
     warnx("cannot initialize from CM state (0x01)");
     warnx("initialize command requires SSD, NSECSD, or DPL state");
     return -1;
   }
 
-  if (current_dlm != DLM_SSD && current_dlm != DLM_NSECSD && current_dlm != DLM_DPL) {
+  if (current_dlm != DLM_STATE_SSD && current_dlm != DLM_STATE_NSECSD &&
+      current_dlm != DLM_STATE_DPL) {
     warnx("cannot initialize from DLM state 0x%02X", current_dlm);
     warnx("initialize command requires SSD (0x02), NSECSD (0x03), or DPL (0x04) state");
     return -1;
@@ -1402,7 +1397,7 @@ ra_initialize(ra_device_t *dev) {
 
   /* Send initialize command: SDLM = current state, DDLM = SSD */
   data[0] = current_dlm; /* SDLM: source DLM state */
-  data[1] = DLM_SSD;     /* DDLM: destination DLM state (always SSD) */
+  data[1] = DLM_STATE_SSD; /* DDLM: destination DLM state (always SSD) */
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), INI_CMD, data, 2, false);
   if (pkt_len < 0)

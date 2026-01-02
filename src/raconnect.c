@@ -24,6 +24,7 @@
 #define GENERIC_CODE 0x55
 #define BOOT_CODE_M4 0xC3  /* Cortex-M4/M23 (RA2/RA4 series) */
 #define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA4M2/RA6 series) */
+#define BOOT_CODE_M85 0xC5 /* Cortex-M85 (RA8 series) */
 
 /* Forward declarations for static functions */
 static int ra_inquire(ra_device_t *dev);
@@ -285,7 +286,7 @@ ra_confirm(ra_device_t *dev) {
         usleep(100000); /* Wait 100ms for bootloader to transition */
         return 0;
       }
-      if (resp == 0xC5) {
+      if (resp == BOOT_CODE_M85) {
         fprintf(stderr, "Boot code 0xC5 (Cortex-M85)\n");
         usleep(50000); /* Wait 50ms for bootloader to transition */
         return 0;
