@@ -56,6 +56,7 @@ usage(int status) {
       "  -i, --id <hex>       ID code for authentication (32 hex chars)\n"
       "  -e, --erase-all      Erase all areas using ALeRASE magic ID\n"
       "  -v, --verify         Verify after write\n"
+      "  -u, --uart           Use plain UART mode (P109/P110 pins)\n"
       "  -U, --usb-reset      USB reset before connecting (Linux only)\n"
       "      --cfs1 <KB>      Code flash secure region size without NSC\n"
       "      --cfs2 <KB>      Code flash secure region size (total)\n"
@@ -72,7 +73,8 @@ usage(int status) {
       "  radfu erase -a 0x0 -s 0x10000\n"
       "  radfu crc -a 0x0 -s 0x10000\n"
       "  radfu osis\n"
-      "  radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0\n");
+      "  radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0\n"
+      "  radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter\n");
   exit(status);
 }
 
@@ -166,6 +168,7 @@ static const struct option longopts[] = {
   { "id",        required_argument, NULL, 'i'      },
   { "erase-all", no_argument,       NULL, 'e'      },
   { "verify",    no_argument,       NULL, 'v'      },
+  { "uart",      no_argument,       NULL, 'u'      },
   { "usb-reset", no_argument,       NULL, 'U'      },
   { "cfs1",      required_argument, NULL, OPT_CFS1 },
   { "cfs2",      required_argument, NULL, OPT_CFS2 },
@@ -189,6 +192,7 @@ main(int argc, char *argv[]) {
   bool verify = false;
   bool use_auth = false;
   bool erase_all = false;
+  bool uart_mode = false;
   bool usb_reset = false;
   uint8_t dest_dlm = 0;
   uint8_t param_value = 0;
@@ -200,7 +204,7 @@ main(int argc, char *argv[]) {
   enum command cmd = CMD_NONE;
   int opt;
 
-  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evUhV", longopts, NULL)) != -1) {
+  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evuUhV", longopts, NULL)) != -1) {
     switch (opt) {
     case 'p':
       port = optarg;
@@ -222,6 +226,9 @@ main(int argc, char *argv[]) {
       break;
     case 'v':
       verify = true;
+      break;
+    case 'u':
+      uart_mode = true;
       break;
     case 'U':
       usb_reset = true;
@@ -364,6 +371,11 @@ main(int argc, char *argv[]) {
 
   ra_device_t dev;
   ra_dev_init(&dev);
+  dev.uart_mode = uart_mode;
+
+  /* Validate UART mode options */
+  if (uart_mode && usb_reset)
+    errx(EXIT_FAILURE, "--usb-reset is not available in UART mode");
 
   /* Perform USB power reset if requested */
   if (usb_reset) {

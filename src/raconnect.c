@@ -85,6 +85,10 @@ ra_open(ra_device_t *dev, const char *port) {
   bool auto_detect = false;
 
   if (port == NULL) {
+    if (dev->uart_mode) {
+      warnx("UART mode requires explicit port (-p option)");
+      return -1;
+    }
     if (ra_find_port(portbuf, sizeof(portbuf), tty_name, sizeof(tty_name)) < 0) {
       warnx("no Renesas device found");
       return -1;
@@ -101,10 +105,14 @@ ra_open(ra_device_t *dev, const char *port) {
     tty_name[sizeof(tty_name) - 1] = '\0';
   }
 
-  /* Print USB device information */
-  ra_print_usb_info(tty_name);
-  if (auto_detect)
-    fprintf(stderr, "Auto-detected Renesas device\n");
+  /* Print device information */
+  if (dev->uart_mode) {
+    fprintf(stderr, "UART mode: %s\n", port);
+  } else {
+    ra_print_usb_info(tty_name);
+    if (auto_detect)
+      fprintf(stderr, "Auto-detected Renesas device\n");
+  }
 
   dev->fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
   if (dev->fd < 0) {
