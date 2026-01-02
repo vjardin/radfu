@@ -21,6 +21,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#define SYNC_BYTE 0x00     /* Synchronization byte for connection */
 #define GENERIC_CODE 0x55
 #define BOOT_CODE_M4 0xC3  /* Cortex-M4/M23 (RA2/RA4 series) */
 #define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA4M2/RA6 series) */
@@ -213,16 +214,16 @@ ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
 
 static int
 ra_sync(ra_device_t *dev) {
-  uint8_t sync = 0x00;
+  uint8_t sync = SYNC_BYTE;
   uint8_t resp;
 
-  /* Send 0x00 bytes until device responds with 0x00 */
+  /* Send SYNC_BYTE until device responds with SYNC_BYTE */
   for (int i = 0; i < dev->max_tries; i++) {
     if (write(dev->fd, &sync, 1) != 1)
       continue;
 
     ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);
-    if (n == 1 && resp == 0x00) {
+    if (n == 1 && resp == SYNC_BYTE) {
       fprintf(stderr, "Sync OK\n");
       return 0;
     }
@@ -250,8 +251,8 @@ ra_inquire(ra_device_t *dev) {
     return -1;
 
   fprintf(stderr, "inquire: n=%zd, resp=0x%02x\n", n, n > 0 ? resp[0] : 0);
-  if (n == 0 || resp[0] == 0x00) {
-    /* Not connected yet */
+  if (n == 0 || resp[0] == SYNC_BYTE) {
+    /* Not connected yet (received sync echo, not command response) */
     return 0;
   }
 

@@ -252,11 +252,11 @@ set_crc_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *en
  */
 STATIC const char *
 get_area_type(uint32_t sad) {
-  if (sad < 0x00100000)
+  if (sad < ADDR_CODE_FLASH_END)
     return "Code Flash";
-  else if (sad >= 0x08000000 && sad < 0x09000000)
+  else if (sad >= ADDR_DATA_FLASH_START && sad < ADDR_DATA_FLASH_END)
     return "Data Flash";
-  else if (sad >= 0x01000000 && sad < 0x02000000)
+  else if (sad >= ADDR_CONFIG_START && sad < ADDR_CONFIG_END)
     return "Config";
   else
     return "Unknown";
