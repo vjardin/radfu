@@ -147,7 +147,12 @@ set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
   uint32_t rau = dev->chip_layout[area].rau;
   uint32_t ead = dev->chip_layout[area].ead;
 
-  if (rau > 0 && start % rau != 0) {
+  if (rau == 0) {
+    warnx("area %d does not support read operations (RAU=0)", area);
+    return -1;
+  }
+
+  if (start % rau != 0) {
     warnx("start address 0x%x not aligned on read unit 0x%x", start, rau);
     return -1;
   }
@@ -164,12 +169,15 @@ set_read_boundaries(ra_device_t *dev, uint32_t start, uint32_t size, uint32_t *e
     return -1;
   }
 
-  /* Align end address to RAU boundary if needed */
-  if (rau > 0 && (end + 1) % rau != 0) {
+  /* Align end address to RAU boundary if needed (per spec 6.20) */
+  if ((end + 1) % rau != 0) {
     uint32_t aligned_end = ((end / rau) + 1) * rau - 1;
     if (aligned_end > ead)
       aligned_end = ead;
-    end = aligned_end;
+    if (aligned_end != end) {
+      warnx("note: end address aligned from 0x%x to 0x%x (RAU=%u)", end, aligned_end, rau);
+      end = aligned_end;
+    }
   }
 
   *end_out = end;
@@ -675,11 +683,6 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
     return -1;
   }
 
-  fprintf(stderr, "REA send %zd bytes:", pkt_len);
-  for (ssize_t i = 0; i < pkt_len; i++)
-    fprintf(stderr, " %02X", pkt[i]);
-  fprintf(stderr, "\n");
-
   if (ra_send(dev, pkt, pkt_len) < 0) {
     close(fd);
     return -1;
@@ -691,10 +694,6 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
 
   for (uint32_t i = 0; i <= nr_packets; i++) {
     n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
-    fprintf(stderr, "REA recv %zd bytes:", n);
-    for (ssize_t j = 0; j < n && j < 20; j++)
-      fprintf(stderr, " %02X", resp[j]);
-    fprintf(stderr, "\n");
     if (n < 7) {
       warnx("short response during read (%zd bytes)", n);
       close(fd);
