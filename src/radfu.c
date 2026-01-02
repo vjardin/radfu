@@ -370,11 +370,11 @@ ra_get_area_info(ra_device_t *dev, bool print) {
 
     /* Calculate sizes by area type */
     uint32_t area_size = (ead >= sad) ? (ead - sad + 1) : 0;
-    if (sad < 0x00100000)
+    if (sad < ADDR_CODE_FLASH_END)
       code_flash_size += area_size;
-    else if (sad >= 0x08000000 && sad < 0x09000000)
+    else if (sad >= ADDR_DATA_FLASH_START && sad < ADDR_DATA_FLASH_END)
       data_flash_size += area_size;
-    else if (sad >= 0x01000000 && sad < 0x02000000)
+    else if (sad >= ADDR_CONFIG_START && sad < ADDR_CONFIG_END)
       config_size += area_size;
 
     if (print) {
