@@ -27,7 +27,8 @@
 #define BOOT_CODE_M33 0xC6 /* Cortex-M33 (RA4M2/RA6 series) */
 #define BOOT_CODE_M85 0xC5 /* Cortex-M85 (RA8 series) */
 
-/* Forward declarations for static functions */
+/* Forward declarations */
+static int ra_sync(ra_device_t *dev);
 static int ra_inquire(ra_device_t *dev);
 static int ra_confirm(ra_device_t *dev);
 
@@ -41,11 +42,6 @@ ra_dev_init(ra_device_t *dev) {
   dev->timeout_ms = TIMEOUT_MS;
   dev->sel_area = 0;
 }
-
-/* Forward declarations */
-static int ra_sync(ra_device_t *dev);
-static int ra_inquire(ra_device_t *dev);
-static int ra_confirm(ra_device_t *dev);
 
 static int
 set_serial_attrs(int fd, speed_t speed) {
