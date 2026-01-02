@@ -34,6 +34,11 @@
 /*
  * Unpack packet and print MCU error if present
  * Returns: data length on success, -1 on error
+ *
+ * Error response format per spec 6.18.2.3/6.19.2.4:
+ *   STS (1 byte)  - status code (ERR_ADDR, ERR_PROT, etc.)
+ *   ST2 (4 bytes) - status details (FSTATR for flash errors)
+ *   ADR (4 bytes) - failure address
  */
 static ssize_t
 unpack_with_error(
@@ -45,13 +50,21 @@ unpack_with_error(
     *data_len = dlen;
   if (ret < 0) {
     if (cmd & STATUS_ERR) {
-      /* Error code is in data[0], not in cmd byte */
+      /* Error code is in data[0], details in data[1-4], address in data[5-8] */
       uint8_t err_code = (dlen > 0 && data != NULL) ? data[0] : 0;
       warnx("%s: MCU error 0x%02X (%s: %s)",
           context,
           err_code,
           ra_strerror(err_code),
           ra_strdesc(err_code));
+      /* Show failure address for flash access errors */
+      if (dlen >= 9 && data != NULL) {
+        uint32_t st2 = be_to_uint32(&data[1]);
+        uint32_t adr = be_to_uint32(&data[5]);
+        if (st2 != 0xFFFFFFFF || adr != 0xFFFFFFFF) {
+          warnx("%s: flash status=0x%08X, failure address=0x%08X", context, st2, adr);
+        }
+      }
     } else {
       warnx("%s: unpack failed (cmd=0x%02X)", context, cmd);
     }
@@ -599,7 +612,8 @@ int
 ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
   uint8_t pkt[MAX_PKT_LEN];
   uint8_t resp[16];
-  uint8_t data[8];
+  uint8_t cmd_data[8];
+  uint8_t resp_data[16]; /* For error details: STS(1) + ST2(4) + ADR(4) */
   ssize_t pkt_len, n;
   uint32_t end;
 
@@ -608,10 +622,10 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
 
   printf("Erasing 0x%08x:0x%08x\n", start, end);
 
-  uint32_to_be(start, &data[0]);
-  uint32_to_be(end, &data[4]);
+  uint32_to_be(start, &cmd_data[0]);
+  uint32_to_be(end, &cmd_data[4]);
 
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), ERA_CMD, data, 8, false);
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), ERA_CMD, cmd_data, 8, false);
   if (pkt_len < 0)
     return -1;
 
@@ -625,7 +639,7 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
   }
 
   size_t data_len;
-  if (unpack_with_error(resp, n, NULL, &data_len, "erase") < 0)
+  if (unpack_with_error(resp, n, resp_data, &data_len, "erase") < 0)
     return -1;
 
   printf("Erase complete\n");
@@ -721,7 +735,8 @@ int
 ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool verify) {
   uint8_t pkt[MAX_PKT_LEN];
   uint8_t resp[16];
-  uint8_t data[8];
+  uint8_t cmd_data[8];
+  uint8_t resp_data[16]; /* For error details: STS(1) + ST2(4) + ADR(4) */
   uint8_t chunk[CHUNK_SIZE];
   ssize_t pkt_len, n;
   uint32_t end;
@@ -759,10 +774,10 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   uint32_t write_size = end - start + 1;
 
   /* Send write command */
-  uint32_to_be(start, &data[0]);
-  uint32_to_be(end, &data[4]);
+  uint32_to_be(start, &cmd_data[0]);
+  uint32_to_be(end, &cmd_data[4]);
 
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, data, 8, false);
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, cmd_data, 8, false);
   if (pkt_len < 0) {
     close(fd);
     return -1;
@@ -781,7 +796,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   }
 
   size_t data_len;
-  if (unpack_with_error(resp, n, NULL, &data_len, "write init") < 0) {
+  if (unpack_with_error(resp, n, resp_data, &data_len, "write init") < 0) {
     close(fd);
     return -1;
   }
@@ -824,7 +839,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
       return -1;
     }
 
-    if (unpack_with_error(resp, n, NULL, &data_len, "write") < 0) {
+    if (unpack_with_error(resp, n, resp_data, &data_len, "write") < 0) {
       close(fd);
       return -1;
     }
