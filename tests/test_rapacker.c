@@ -25,9 +25,9 @@ test_calc_sum(void **state) {
   (void)state;
 
   uint8_t data1[] = { 0x00 };
-  assert_int_equal(ra_calc_sum(0x12, data1, 1), 0xEC);
-  assert_int_equal(ra_calc_sum(0x34, data1, 1), 0xCA);
-  assert_int_equal(ra_calc_sum(0x00, data1, 1), 0xFE);
+  assert_int_equal(ra_calc_sum(ERA_CMD, data1, 1), 0xEC);
+  assert_int_equal(ra_calc_sum(BAU_CMD, data1, 1), 0xCA);
+  assert_int_equal(ra_calc_sum(INQ_CMD, data1, 1), 0xFE);
 }
 
 static void
@@ -39,8 +39,8 @@ test_calc_sum_empty(void **state) {
    * SIG (0x3A): sum = 0x3B, ~(0x3B-1) & 0xFF = 0xC5
    * DLM (0x2C): sum = 0x2D, ~(0x2D-1) & 0xFF = 0xD3
    */
-  assert_int_equal(ra_calc_sum(0x3A, NULL, 0), 0xC5); /* SIG command */
-  assert_int_equal(ra_calc_sum(0x2C, NULL, 0), 0xD3); /* DLM command */
+  assert_int_equal(ra_calc_sum(SIG_CMD, NULL, 0), 0xC5);
+  assert_int_equal(ra_calc_sum(DLM_CMD, NULL, 0), 0xD3);
 }
 
 static void
@@ -50,7 +50,7 @@ test_calc_sum_multidata(void **state) {
   /* Multiple data bytes */
   uint8_t data[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0xFF, 0xFF };
   /* Erase command with address range */
-  uint8_t sum = ra_calc_sum(0x12, data, 8);
+  uint8_t sum = ra_calc_sum(ERA_CMD, data, 8);
   /* Verify checksum is non-zero and valid */
   assert_true(sum != 0);
 }
@@ -151,7 +151,7 @@ test_pack_unpack(void **state) {
 
   /* Test round-trip: pack then unpack */
   uint8_t data1[] = { 0x00, 0x01, 0x02 };
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x13, data1, 3, true);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), WRI_CMD, data1, 3, true);
   assert_true(pkt_len > 0);
 
   ret = ra_unpack_pkt(buf, pkt_len, data_out, &data_len, &cmd);
@@ -163,18 +163,18 @@ test_pack_unpack(void **state) {
 
   /* Test with single byte */
   uint8_t data2[] = { 0x00 };
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x34, data2, 1, true);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), BAU_CMD, data2, 1, true);
   assert_true(pkt_len > 0);
   ret = ra_unpack_pkt(buf, pkt_len, data_out, &data_len, &cmd);
   assert_int_equal(ret, 1);
   assert_int_equal(data_out[0], 0x00);
 
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x00, data2, 1, true);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), INQ_CMD, data2, 1, true);
   assert_true(pkt_len > 0);
   ret = ra_unpack_pkt(buf, pkt_len, data_out, &data_len, &cmd);
   assert_int_equal(ret, 1);
 
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x12, data2, 1, true);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), ERA_CMD, data2, 1, true);
   assert_true(pkt_len > 0);
   ret = ra_unpack_pkt(buf, pkt_len, data_out, &data_len, &cmd);
   assert_int_equal(ret, 1);
@@ -189,20 +189,20 @@ test_err_unpack(void **state) {
   uint8_t cmd;
   ssize_t ret;
 
-  /* Error packet: 0x81 0x00 0x02 0x93 0xC3 0x38 0x03 */
-  uint8_t pkt[] = { 0x81, 0x00, 0x02, 0x93, 0xC3, 0x38, 0x03 };
+  /* Error packet: SOD_ACK LNH LNL (WRI|0x80) ERR_FLOW SUM ETX */
+  uint8_t pkt[] = { SOD_ACK, 0x00, 0x02, WRI_CMD | STATUS_ERR, ERR_FLOW, 0x38, ETX };
   ret = ra_unpack_pkt(pkt, sizeof(pkt), data, &data_len, &cmd);
   assert_int_equal(ret, -1);
   assert_int_equal(errno, EIO);
-  assert_int_equal(data[0], 0xC3);
+  assert_int_equal(data[0], ERR_FLOW);
 }
 
 static void
 test_strerror(void **state) {
   (void)state;
 
-  assert_string_equal(ra_strerror(0xC3), "ERR_FLOW");
-  assert_string_equal(ra_strerror(0xE1), "ERR_ERA");
+  assert_string_equal(ra_strerror(ERR_FLOW), "ERR_FLOW");
+  assert_string_equal(ra_strerror(ERR_ERA), "ERR_ERA");
   assert_string_equal(ra_strerror(0xFF), "ERR_UNKNOWN");
 }
 
@@ -215,19 +215,19 @@ test_all_error_codes(void **state) {
   (void)state;
 
   /* Test all defined error codes */
-  assert_string_equal(ra_strerror(0x0C), "ERR_UNSU");
-  assert_string_equal(ra_strerror(0xC1), "ERR_PCKT");
-  assert_string_equal(ra_strerror(0xC2), "ERR_CHKS");
-  assert_string_equal(ra_strerror(0xC3), "ERR_FLOW");
-  assert_string_equal(ra_strerror(0xD0), "ERR_ADDR");
-  assert_string_equal(ra_strerror(0xD4), "ERR_BAUD");
-  assert_string_equal(ra_strerror(0xD5), "ERR_CMD");
-  assert_string_equal(ra_strerror(0xDA), "ERR_PROT");
-  assert_string_equal(ra_strerror(0xDB), "ERR_ID");
-  assert_string_equal(ra_strerror(0xDC), "ERR_SERI");
-  assert_string_equal(ra_strerror(0xE1), "ERR_ERA");
-  assert_string_equal(ra_strerror(0xE2), "ERR_WRI");
-  assert_string_equal(ra_strerror(0xE7), "ERR_SEQ");
+  assert_string_equal(ra_strerror(ERR_UNSU), "ERR_UNSU");
+  assert_string_equal(ra_strerror(ERR_PCKT), "ERR_PCKT");
+  assert_string_equal(ra_strerror(ERR_CHKS), "ERR_CHKS");
+  assert_string_equal(ra_strerror(ERR_FLOW), "ERR_FLOW");
+  assert_string_equal(ra_strerror(ERR_ADDR), "ERR_ADDR");
+  assert_string_equal(ra_strerror(ERR_BAUD), "ERR_BAUD");
+  assert_string_equal(ra_strerror(ERR_CMD), "ERR_CMD");
+  assert_string_equal(ra_strerror(ERR_PROT), "ERR_PROT");
+  assert_string_equal(ra_strerror(ERR_ID), "ERR_ID");
+  assert_string_equal(ra_strerror(ERR_SERI), "ERR_SERI");
+  assert_string_equal(ra_strerror(ERR_ERA), "ERR_ERA");
+  assert_string_equal(ra_strerror(ERR_WRI), "ERR_WRI");
+  assert_string_equal(ra_strerror(ERR_SEQ), "ERR_SEQ");
 
   /* Unknown codes return ERR_UNKNOWN */
   assert_string_equal(ra_strerror(0x00), "ERR_UNKNOWN");
@@ -240,19 +240,19 @@ test_strdesc(void **state) {
   (void)state;
 
   /* Test error descriptions */
-  assert_string_equal(ra_strdesc(0x0C), "unsupported command");
-  assert_string_equal(ra_strdesc(0xC1), "packet error (length/ETX)");
-  assert_string_equal(ra_strdesc(0xC2), "checksum mismatch");
-  assert_string_equal(ra_strdesc(0xC3), "command flow error");
-  assert_string_equal(ra_strdesc(0xD0), "invalid address");
-  assert_string_equal(ra_strdesc(0xD4), "baud rate margin error");
-  assert_string_equal(ra_strdesc(0xD5), "command not accepted (wrong state)");
-  assert_string_equal(ra_strdesc(0xDA), "protection error");
-  assert_string_equal(ra_strdesc(0xDB), "ID authentication mismatch");
-  assert_string_equal(ra_strdesc(0xDC), "serial programming disabled");
-  assert_string_equal(ra_strdesc(0xE1), "erase failed");
-  assert_string_equal(ra_strdesc(0xE2), "write failed");
-  assert_string_equal(ra_strdesc(0xE7), "sequencer error");
+  assert_string_equal(ra_strdesc(ERR_UNSU), "unsupported command");
+  assert_string_equal(ra_strdesc(ERR_PCKT), "packet error (length/ETX)");
+  assert_string_equal(ra_strdesc(ERR_CHKS), "checksum mismatch");
+  assert_string_equal(ra_strdesc(ERR_FLOW), "command flow error");
+  assert_string_equal(ra_strdesc(ERR_ADDR), "invalid address");
+  assert_string_equal(ra_strdesc(ERR_BAUD), "baud rate margin error");
+  assert_string_equal(ra_strdesc(ERR_CMD), "command not accepted (wrong state)");
+  assert_string_equal(ra_strdesc(ERR_PROT), "protection error");
+  assert_string_equal(ra_strdesc(ERR_ID), "ID authentication mismatch");
+  assert_string_equal(ra_strdesc(ERR_SERI), "serial programming disabled");
+  assert_string_equal(ra_strdesc(ERR_ERA), "erase failed");
+  assert_string_equal(ra_strdesc(ERR_WRI), "write failed");
+  assert_string_equal(ra_strdesc(ERR_SEQ), "sequencer error");
 
   /* Unknown codes */
   assert_string_equal(ra_strdesc(0xFF), "unknown error");
@@ -286,7 +286,7 @@ test_pack_buffer_too_small(void **state) {
   uint8_t data[] = { 0x00 };
   ssize_t pkt_len;
 
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x12, data, 1, false);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), ERA_CMD, data, 1, false);
   assert_int_equal(pkt_len, -1);
   assert_int_equal(errno, ENOBUFS);
 }
@@ -300,7 +300,7 @@ test_pack_data_too_long(void **state) {
   ssize_t pkt_len;
 
   memset(data, 0xAA, sizeof(data));
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x13, data, sizeof(data), false);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), WRI_CMD, data, sizeof(data), false);
   assert_int_equal(pkt_len, -1);
   assert_int_equal(errno, EINVAL);
 }
@@ -314,7 +314,7 @@ test_pack_max_data(void **state) {
   ssize_t pkt_len;
 
   memset(data, 0x55, sizeof(data));
-  pkt_len = ra_pack_pkt(buf, sizeof(buf), 0x13, data, MAX_DATA_LEN, false);
+  pkt_len = ra_pack_pkt(buf, sizeof(buf), WRI_CMD, data, MAX_DATA_LEN, false);
   assert_true(pkt_len > 0);
   assert_int_equal(pkt_len, MAX_DATA_LEN + 6);
 }
@@ -327,8 +327,8 @@ test_pack_ack_vs_cmd(void **state) {
   uint8_t buf_ack[MAX_PKT_LEN];
   uint8_t data[] = { 0x00 };
 
-  ra_pack_pkt(buf_cmd, sizeof(buf_cmd), 0x15, data, 1, false);
-  ra_pack_pkt(buf_ack, sizeof(buf_ack), 0x15, data, 1, true);
+  ra_pack_pkt(buf_cmd, sizeof(buf_cmd), REA_CMD, data, 1, false);
+  ra_pack_pkt(buf_ack, sizeof(buf_ack), REA_CMD, data, 1, true);
 
   assert_int_equal(buf_cmd[0], SOD_CMD);
   assert_int_equal(buf_ack[0], SOD_ACK);

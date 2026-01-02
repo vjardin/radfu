@@ -184,18 +184,18 @@ test_mock_send_recv(void **state) {
   ra_mock_init(&mock);
 
   /* Add a response */
-  uint8_t response[] = { 0x81, 0x00, 0x02, 0x00, 0x00, 0xFE, 0x03 };
+  uint8_t response[] = { SOD_ACK, 0x00, 0x02, INQ_CMD, 0x00, 0xFE, ETX };
   ra_mock_add_response(&mock, response, sizeof(response));
 
   /* Send a packet */
-  uint8_t send_data[] = { 0x01, 0x00, 0x01, 0x3A, 0xC5, 0x03 }; /* SIG command */
+  uint8_t send_data[] = { SOD_CMD, 0x00, 0x01, SIG_CMD, 0xC5, ETX };
   ssize_t ret = ra_mock_send(&mock, send_data, sizeof(send_data));
   assert_int_equal(ret, sizeof(send_data));
   assert_int_equal(mock.sent_count, 1);
 
   /* Verify sent packet */
   assert_int_equal(ra_mock_verify_sent(&mock, 0, send_data, sizeof(send_data)), 0);
-  assert_int_equal(ra_mock_verify_sent_cmd(&mock, 0, 0x3A), 0);
+  assert_int_equal(ra_mock_verify_sent_cmd(&mock, 0, SIG_CMD), 0);
 
   /* Receive response */
   uint8_t recv_buf[32];
@@ -272,7 +272,7 @@ test_mock_add_error_response(void **state) {
   ra_mock_init(&mock);
 
   /* Add an error response */
-  ra_mock_add_error_response(&mock, 0xD0); /* ERR_ADDR */
+  ra_mock_add_error_response(&mock, ERR_ADDR);
 
   assert_int_equal(mock.response_count, 1);
 
@@ -287,7 +287,7 @@ test_mock_add_error_response(void **state) {
   ret = ra_unpack_pkt(recv_buf, ret, data, &data_len, &cmd);
   assert_int_equal(ret, -1); /* Should fail due to error bit */
   assert_true(cmd & STATUS_ERR);
-  assert_int_equal(data[0], 0xD0);
+  assert_int_equal(data[0], ERR_ADDR);
 }
 
 /*
@@ -453,7 +453,7 @@ test_protocol_error_addr(void **state) {
   ra_mock_init(&mock);
 
   /* Add an ERR_ADDR error response */
-  ra_mock_add_error_response(&mock, 0xD0);
+  ra_mock_add_error_response(&mock, ERR_ADDR);
 
   /* Receive and verify error */
   uint8_t recv_buf[32];
@@ -465,7 +465,7 @@ test_protocol_error_addr(void **state) {
   uint8_t cmd;
   ret = ra_unpack_pkt(recv_buf, ret, data, &data_len, &cmd);
   assert_int_equal(ret, -1);
-  assert_int_equal(data[0], 0xD0);
+  assert_int_equal(data[0], ERR_ADDR);
   assert_string_equal(ra_strerror(data[0]), "ERR_ADDR");
 }
 
@@ -477,7 +477,7 @@ test_protocol_error_id(void **state) {
   ra_mock_init(&mock);
 
   /* Add an ERR_ID error response (wrong ID code) */
-  ra_mock_add_error_response(&mock, 0xDB);
+  ra_mock_add_error_response(&mock, ERR_ID);
 
   uint8_t recv_buf[32];
   ssize_t ret = ra_mock_recv(&mock, recv_buf, sizeof(recv_buf), 100);
@@ -488,7 +488,7 @@ test_protocol_error_id(void **state) {
   uint8_t cmd;
   ret = ra_unpack_pkt(recv_buf, ret, data, &data_len, &cmd);
   assert_int_equal(ret, -1);
-  assert_int_equal(data[0], 0xDB);
+  assert_int_equal(data[0], ERR_ID);
   assert_string_equal(ra_strerror(data[0]), "ERR_ID");
 }
 
@@ -500,7 +500,7 @@ test_protocol_error_prot(void **state) {
   ra_mock_init(&mock);
 
   /* Add an ERR_PROT error response (protection error) */
-  ra_mock_add_error_response(&mock, 0xDA);
+  ra_mock_add_error_response(&mock, ERR_PROT);
 
   uint8_t recv_buf[32];
   ssize_t ret = ra_mock_recv(&mock, recv_buf, sizeof(recv_buf), 100);
@@ -511,7 +511,7 @@ test_protocol_error_prot(void **state) {
   uint8_t cmd;
   ret = ra_unpack_pkt(recv_buf, ret, data, &data_len, &cmd);
   assert_int_equal(ret, -1);
-  assert_int_equal(data[0], 0xDA);
+  assert_int_equal(data[0], ERR_PROT);
   assert_string_equal(ra_strerror(data[0]), "ERR_PROT");
 }
 
