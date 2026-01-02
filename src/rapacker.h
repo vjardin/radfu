@@ -47,13 +47,13 @@
 #define ERR_FLOW 0xC3 /* Command flow error */
 #define ERR_ADDR 0xD0 /* Invalid address */
 #define ERR_BAUD 0xD4 /* Baud rate margin error */
-#define ERR_CMD  0xD5 /* Command not accepted (wrong state) */
+#define ERR_CMD 0xD5  /* Command not accepted (wrong state) */
 #define ERR_PROT 0xDA /* Protection error */
-#define ERR_ID   0xDB /* ID authentication mismatch */
+#define ERR_ID 0xDB   /* ID authentication mismatch */
 #define ERR_SERI 0xDC /* Serial programming disabled */
-#define ERR_ERA  0xE1 /* Erase failed */
-#define ERR_WRI  0xE2 /* Write failed */
-#define ERR_SEQ  0xE7 /* Sequencer error */
+#define ERR_ERA 0xE1  /* Erase failed */
+#define ERR_WRI 0xE2  /* Write failed */
+#define ERR_SEQ 0xE7  /* Sequencer error */
 
 /* Protocol constants */
 #define SOD_CMD 0x01 /* Start of data (command) */

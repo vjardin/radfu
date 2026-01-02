@@ -93,11 +93,11 @@ const char *ra_dlm_state_name(uint8_t code);
 #define KOA_TYPE_CONFIG 0x2 /* Config area */
 
 /* Memory address range boundaries for area type detection */
-#define ADDR_CODE_FLASH_END 0x00100000    /* Code flash: 0x00000000 - 0x000FFFFF */
-#define ADDR_DATA_FLASH_START 0x08000000  /* Data flash start */
-#define ADDR_DATA_FLASH_END 0x09000000    /* Data flash end (exclusive) */
-#define ADDR_CONFIG_START 0x01000000      /* Config area start */
-#define ADDR_CONFIG_END 0x02000000        /* Config area end (exclusive) */
+#define ADDR_CODE_FLASH_END 0x00100000   /* Code flash: 0x00000000 - 0x000FFFFF */
+#define ADDR_DATA_FLASH_START 0x08000000 /* Data flash start */
+#define ADDR_DATA_FLASH_END 0x09000000   /* Data flash end (exclusive) */
+#define ADDR_CONFIG_START 0x01000000     /* Config area start */
+#define ADDR_CONFIG_END 0x02000000       /* Config area end (exclusive) */
 
 /*
  * Transition DLM state without authentication

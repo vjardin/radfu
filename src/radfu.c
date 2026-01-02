@@ -395,10 +395,13 @@ ra_get_area_info(ra_device_t *dev, bool print) {
         snprintf(crc_str, sizeof(crc_str), "n/a");
       /* Use KOA for area type (spec 6.16.2.2), fallback to address-based */
       const char *area_type = (koa != 0) ? get_area_type_koa(koa) : get_area_type(sad);
-      printf("Area %d [%s] (KOA=0x%02X): 0x%08X - 0x%08X\n",
-          i, area_type, koa, sad, ead);
+      printf("Area %d [%s] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
       printf("       Size: %-8s  Erase: %-8s  Write: %-8s  Read: %-8s  CRC: %s\n",
-          size_str, erase_str, write_str, read_str, crc_str);
+          size_str,
+          erase_str,
+          write_str,
+          read_str,
+          crc_str);
     }
   }
 
@@ -1099,7 +1102,9 @@ ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm) {
   if (unpack_with_error(resp, n, resp_data, &data_len, "DLM transit") < 0)
     return -1;
 
-  printf("DLM transit complete: %s -> %s\n", ra_dlm_state_name(current_dlm), ra_dlm_state_name(dest_dlm));
+  printf("DLM transit complete: %s -> %s\n",
+      ra_dlm_state_name(current_dlm),
+      ra_dlm_state_name(dest_dlm));
   return 0;
 }
 
@@ -1396,7 +1401,7 @@ ra_initialize(ra_device_t *dev) {
   printf("WARNING: This will erase all flash areas and reset boundaries!\n");
 
   /* Send initialize command: SDLM = current state, DDLM = SSD */
-  data[0] = current_dlm; /* SDLM: source DLM state */
+  data[0] = current_dlm;   /* SDLM: source DLM state */
   data[1] = DLM_STATE_SSD; /* DDLM: destination DLM state (always SSD) */
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), INI_CMD, data, 2, false);
