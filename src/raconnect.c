@@ -218,12 +218,12 @@ ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
 
 static int
 ra_sync(ra_device_t *dev) {
-  uint8_t sync = SYNC_BYTE;
+  const uint8_t sync[] = {SYNC_BYTE, SYNC_BYTE, SYNC_BYTE};
   uint8_t resp;
 
-  /* Send SYNC_BYTE until device responds with SYNC_BYTE */
+  /* Send 3 consecutive SYNC_BYTEs until device responds with SYNC_BYTE */
   for (int i = 0; i < dev->max_tries; i++) {
-    if (write(dev->fd, &sync, 1) != 1)
+    if (write(dev->fd, sync, sizeof(sync)) != sizeof(sync))
       continue;
 
     ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);

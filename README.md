@@ -7,33 +7,45 @@ built-in ROM bootloader to perform firmware update operations via USB or UART/SC
 
 ## Features
 
-- Read flash memory contents to file
-- Write firmware images to flash memory
-- Erase flash sectors
+- Read/write/erase flash memory
 - Query device information (MCU type, firmware version, memory areas)
+- Device Lifecycle Management (DLM) state control
+- TrustZone boundary configuration
+- CRC-32 calculation on flash regions
+- Key management (wrapped keys and user keys)
+- Factory reset (initialize command)
 - ID authentication for protected devices
-- Auto-detect Renesas USB devices
-- Display USB device information (vendor, product, serial number)
-- Configurable UART baud rate (9600 to 4000000 bps)
+- Auto-detect Renesas USB devices or use plain UART
+- Configurable baud rate (9600 to 4000000 bps)
 - Verify after write option
-- Descriptive MCU error reporting with error codes and messages
-- Progress callback API for library integration
 - Minimal footprint - pure C with no external dependencies
 
 ## Protocol Support
 
 Implements the Renesas RA Standard Boot Firmware protocol:
 
-| Command       | Code | Status      |
-|---------------|------|-------------|
-| INQ (Inquire) | 0x00 | Implemented |
-| ERA (Erase)   | 0x12 | Implemented |
-| WRI (Write)   | 0x13 | Implemented |
-| REA (Read)    | 0x15 | Implemented |
-| BAU (Baudrate)| 0x34 | Implemented |
-| SIG (Signature)| 0x3A| Implemented |
-| ARE (Area)    | 0x3B | Implemented |
-| IDA (ID Auth) | 0x30 | Implemented |
+| Command          | Code | Description                    |
+|------------------|------|--------------------------------|
+| INQ (Inquire)    | 0x00 | Check connection status        |
+| ERA (Erase)      | 0x12 | Erase flash sectors            |
+| WRI (Write)      | 0x13 | Write data to flash            |
+| REA (Read)       | 0x15 | Read data from flash           |
+| CRC              | 0x06 | Calculate CRC-32               |
+| DLM              | 0x05 | Get DLM state                  |
+| DLM_TRN          | 0x09 | Transition DLM state           |
+| BND (Boundary)   | 0x42 | Get TrustZone boundaries       |
+| BND_SET          | 0x43 | Set TrustZone boundaries       |
+| PRM (Param)      | 0x45 | Get initialization parameter   |
+| PRM_SET          | 0x46 | Set initialization parameter   |
+| INI (Initialize) | 0x44 | Factory reset to SSD           |
+| BAU (Baudrate)   | 0x34 | Set UART baud rate             |
+| SIG (Signature)  | 0x3A | Get device signature           |
+| ARE (Area)       | 0x3B | Get memory area info           |
+| IDA (ID Auth)    | 0x30 | ID code authentication         |
+| KEY              | 0x0A | Inject wrapped key             |
+| KEY_VFY          | 0x0C | Verify wrapped key             |
+| UKEY             | 0x0B | Inject user wrapped key        |
+| UKEY_VFY         | 0x0D | Verify user wrapped key        |
 
 ## Installation
 
@@ -74,11 +86,23 @@ meson test -C build
 Usage: radfu <command> [options] [file]
 
 Commands:
-  info                 Show device and memory information
-  read  <file>         Read flash memory to file
-  write <file>         Write file to flash memory
-  erase                Erase flash sectors
-  osis                 Detect ID code protection status
+  info                       Show device and memory information
+  read <file>                Read flash memory to file
+  write <file>               Write file to flash memory
+  erase                      Erase flash sectors
+  crc                        Calculate CRC-32 of flash region
+  dlm                        Show Device Lifecycle Management state
+  dlm-transit <state>        Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)
+  boundary                   Show secure/non-secure boundary settings
+  boundary-set               Set TrustZone boundaries
+  param                      Show device parameter (initialization command)
+  param-set <enable|disable> Enable/disable initialization command
+  init                       Initialize device (factory reset to SSD state)
+  osis                       Show OSIS (ID code protection) status
+  key-set <idx> <file>       Inject wrapped key from file at index
+  key-verify <idx>           Verify key at index
+  ukey-set <idx> <file>      Inject user wrapped key from file at index
+  ukey-verify <idx>          Verify user key at index
 
 Options:
   -p, --port <dev>     Serial port (auto-detect if omitted)
@@ -88,16 +112,24 @@ Options:
   -i, --id <hex>       ID code for authentication (32 hex chars)
   -e, --erase-all      Erase all areas using ALeRASE magic ID
   -v, --verify         Verify after write
-  -U, --usb-reset      USB reset before connecting (Linux only)
+  -u, --uart           Use plain UART mode (P109/P110 pins)
+      --cfs1 <KB>      Code flash secure region size without NSC
+      --cfs2 <KB>      Code flash secure region size (total)
+      --dfs <KB>       Data flash secure region size
+      --srs1 <KB>      SRAM secure region size without NSC
+      --srs2 <KB>      SRAM secure region size (total)
   -h, --help           Show this help message
   -V, --version        Show version
 
 Examples:
   radfu info
-  radfu osis
   radfu read -a 0x0 -s 0x10000 firmware.bin
   radfu write -b 1000000 -a 0x0 -v firmware.bin
   radfu erase -a 0x0 -s 0x10000
+  radfu crc -a 0x0 -s 0x10000
+  radfu dlm
+  radfu osis
+  radfu -u -p /dev/ttyUSB0 info
 ```
 
 ## Supported Baud Rates
@@ -141,10 +173,11 @@ Important: If ALeRASE is disabled, the device cannot be recovered without the co
 
 ## Supported Devices
 
-- RA4M2 - Cortex-M33 (tested on EK-RA4M2, boot code 0xC6)
-- RA4 Series - Cortex-M4/M23 (should work, boot code 0xC3)
-- RA2 Series - Cortex-M23 (should work, boot code 0xC3)
-- RA6 Series - Cortex-M33 (should work, boot code 0xC6)
+- RA2 Series - Cortex-M23 (boot code 0xC3)
+- RA4 Series - Cortex-M4/M23 (boot code 0xC3)
+- RA4M2/RA4M3 - Cortex-M33 (tested on EK-RA4M2, boot code 0xC6)
+- RA6 Series - Cortex-M33 (boot code 0xC6)
+- RA8 Series - Cortex-M85 (boot code 0xC5)
 
 ## DFU Mode on EK-RA4M2
 
@@ -209,25 +242,42 @@ lsusb | grep -i renesas
 ls /dev/ttyACM*
 ```
 
-### USB Reset for Reconnection
-
-The bootloader only accepts connections immediately after a hardware reset. To reconnect
-without unplugging the USB cable, use the --usb-reset option which performs a USB bus
-reset and prompts for the RESET button press:
-
-```sh
-radfu --usb-reset info
-```
-
-This requires write access to sysfs. Grant the CAP_DAC_OVERRIDE capability:
-
-```sh
-sudo setcap cap_dac_override+ep $(which radfu)
-```
-
 ### Board Documentation
 
 - [EK-RA4M2 v1 User's Manual](https://www.renesas.com/en/document/man/ek-ra4m2-v1-users-manual) - See page 28 for J16 jumper details
+
+## UART Mode
+
+As an alternative to USB, you can use plain 2-wire UART communication via an external
+USB-to-UART adapter connected to the MCU's SCI9 pins.
+
+### Pin Connections (RA4M2 / GrpA / GrpB)
+
+| Adapter | MCU Pin | Function             |
+|---------|---------|----------------------|
+| TX      | P110    | RxD (MCU receives)   |
+| RX      | P109    | TxD (MCU transmits)  |
+| GND     | GND     | Ground               |
+
+### Important Notes
+
+- J16 must be shorted (same as USB mode) to enter the ROM bootloader.
+- Do NOT power the board via J11 (USB Device) when using UART mode.
+  USB enumeration traffic interferes with UART synchronization. Use J10 or external power instead.
+- Press the RESET button after powering on to enter boot mode.
+- The RA4M2 uses 3.3V logic. Make sure your adapter supports 3.3V.
+
+### Example
+
+```sh
+radfu -u -p /dev/ttyUSB0 info
+```
+
+### Tested Adapter
+
+Tested with an FTDI FT232 adapter. Make sure the voltage jumper is set to 3.3V.
+A compatible adapter can be purchased at:
+https://fr.aliexpress.com/item/1005008296799409.html (select "USB to TTL (D)")
 
 ## Documentation Sources
 
@@ -242,8 +292,7 @@ This implementation is based on the official Renesas documentation:
 ## Acknowledgments
 
 This project is inspired by [raflash](https://github.com/robinkrens/raflash), the original
-Python implementation by Robin Krens. Many thanks for the excellent work on reverse-engineering
-the Renesas RA bootloader protocol and providing a working reference implementation.
+Python implementation by Robin Krens.
 
 RADFU is a C rewrite aimed at providing a minimal footprint suitable for embedded environments,
 build systems, and resource-constrained scenarios where a Python runtime may not be available
@@ -251,11 +300,7 @@ or practical.
 
 ## Legal Notice
 
-RADFU is implemented using clean-room principles to achieve interoperability with Renesas RA
-microcontrollers. Any reverse engineering involved was limited to what is strictly necessary for
-interoperability and is compliant with EU Directive 2009/24/EC and Article L122-6-1 of the French
-Intellectual Property Code.
-
+RADFU implements publicly documented Renesas boot firmware protocols.
 No proprietary source code or confidential material is included. See LEGAL.md for details.
 
 ## License
