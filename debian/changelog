@@ -1,3 +1,15 @@
+radfu (0.3.0-1) unstable; urgency=low
+
+  * Add plain UART mode support (-u/--uart option)
+  * Add unit tests for protocol and flash operations
+  * Fix response parsing for erase and write commands
+  * Fix read command validation and alignment checks
+  * Remove --usb-reset option (not useful)
+  * Remove unnecessary delays after boot code
+  * Code refactoring with protocol constants
+
+ -- Vincent Jardin <vjardin@free.fr>  Thu, 02 Jan 2025 20:00:00 +0100
+
 radfu (0.2.0-1) unstable; urgency=low
 
   * Fix RAU alignment validation for read operations
