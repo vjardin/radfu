@@ -48,24 +48,22 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 run_radfu() {
     local cmd="$1"
     shift
-    local uart_opts=""
+    local uart_opts=()
     if [ -n "$UART_PORT" ]; then
-        uart_opts="-u -p $UART_PORT"
+        uart_opts=(-u -p "$UART_PORT")
     fi
     if [ "$VERBOSE" -eq 1 ]; then
-        log_info "Running: $RADFU $uart_opts $cmd $*"
+        log_info "Running: $RADFU ${uart_opts[*]} $cmd $*"
     fi
-    # shellcheck disable=SC2086
-    "$RADFU" $uart_opts "$cmd" "$@" 2>&1
+    "$RADFU" "${uart_opts[@]}" "$cmd" "$@" 2>&1
 }
 
 run_radfu_quiet() {
-    local uart_opts=""
+    local uart_opts=()
     if [ -n "$UART_PORT" ]; then
-        uart_opts="-u -p $UART_PORT"
+        uart_opts=(-u -p "$UART_PORT")
     fi
-    # shellcheck disable=SC2086
-    "$RADFU" $uart_opts "$@" >/dev/null 2>&1
+    "$RADFU" "${uart_opts[@]}" "$@" >/dev/null 2>&1
 }
 
 test_info() {
@@ -97,7 +95,8 @@ test_dlm() {
     local output
     if output=$(run_radfu dlm); then
         if echo "$output" | grep -qE "DLM State:.*0x0[1-8]"; then
-            local state=$(echo "$output" | grep "DLM State:" | head -1)
+            local state
+            state=$(echo "$output" | grep "DLM State:" | head -1)
             log_ok "dlm: $state"
             # Warn if board is in a locked state
             if echo "$output" | grep -qE "LCK_DBG|LCK_BOOT"; then
