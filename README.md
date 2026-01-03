@@ -80,6 +80,62 @@ To run tests:
 meson test -C build
 ```
 
+## Windows
+
+### Download Prebuilt Binary
+
+Download `radfu.exe` from the [latest release](https://github.com/vjardin/radfu/releases/latest).
+
+### Building from Source on Windows
+
+Requirements:
+- Visual Studio 2019 or later (for MSVC compiler)
+- Python 3 (for meson)
+- Git
+
+Open "Developer Command Prompt for VS" or "Developer PowerShell for VS", then:
+
+```powershell
+# Install build tools
+pip install meson ninja
+
+# Clone repository
+git clone https://github.com/vjardin/radfu.git
+cd radfu
+
+# Build
+meson setup build
+meson compile -C build
+
+# Run tests (optional, requires vcpkg cmocka)
+vcpkg install cmocka:x64-windows
+meson setup build --wipe --cmake-prefix-path="C:\vcpkg\installed\x64-windows"
+meson test -C build
+```
+
+The resulting binary is `build\radfu.exe`.
+
+### Usage on Windows
+
+Renesas devices appear as COM ports (e.g., `COM3`). radfu auto-detects Renesas USB devices:
+
+```powershell
+# Auto-detect device
+radfu.exe info
+
+# Specify COM port explicitly
+radfu.exe -p COM3 info
+
+# Write firmware
+radfu.exe write -a 0x0 -v firmware.bin
+
+# UART mode with USB-serial adapter
+radfu.exe -u -p COM5 info
+```
+
+To find which COM port the device is using, open Device Manager and look under
+"Ports (COM & LPT)" for a Hitachi or Renesas device (VID 045B).
+
 ## Usage
 
 ```
