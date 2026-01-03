@@ -1,3 +1,14 @@
+radfu (1.0.0-1) unstable; urgency=low
+
+  * First stable release
+  * Auto-detect USB-serial adapter for optimal baud rate
+  * Auto-detect MCU series (RA2/RA4/RA6/RA8) from product name
+  * Improve UART receive performance with faster continuation timeouts
+  * Add USB vs UART performance documentation
+  * Fix clang-format compliance for all source files
+
+ -- Vincent Jardin <vjardin@free.fr>  Fri, 03 Jan 2025 03:30:00 +0100
+
 radfu (0.3.0-1) unstable; urgency=low
 
   * Add plain UART mode support (-u/--uart option)
