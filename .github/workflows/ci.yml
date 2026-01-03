@@ -163,8 +163,6 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
-    env:
-      VCPKG_ROOT: C:\vcpkg
     steps:
       - uses: actions/checkout@v4
 
