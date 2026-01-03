@@ -31,6 +31,10 @@
 
 #define CHUNK_SIZE 1024
 
+/* Protocol-defined field lengths (per spec 6.15.2.2) */
+#define DEVICE_ID_LEN 16    /* DID: Device Identification */
+#define PRODUCT_NAME_LEN 16 /* PTN: Product Type Name */
+
 /*
  * Unpack packet and print MCU error if present
  * Returns: data length on success, -1 on error
@@ -500,7 +504,7 @@ ra_get_dev_info(ra_device_t *dev) {
     /* Parse Device ID if available (16 bytes starting at offset 9) */
     if (data_len >= 25) {
       printf("Device ID:          ");
-      for (int i = 0; i < 16; i++)
+      for (int i = 0; i < DEVICE_ID_LEN; i++)
         printf("%02X", data[9 + i]);
       printf("\n");
 
@@ -532,10 +536,10 @@ ra_get_dev_info(ra_device_t *dev) {
 
     /* Parse Product Type Name if available (16 bytes starting at offset 25) */
     if (data_len >= 41) {
-      char product[17] = { 0 };
-      memcpy(product, &data[25], 16);
+      char product[PRODUCT_NAME_LEN + 1] = { 0 };
+      memcpy(product, &data[25], PRODUCT_NAME_LEN);
       /* Trim trailing spaces */
-      for (int i = 15; i >= 0 && product[i] == ' '; i--)
+      for (int i = PRODUCT_NAME_LEN - 1; i >= 0 && product[i] == ' '; i--)
         product[i] = '\0';
 
       printf("Product Name:       %s\n", product);
@@ -634,8 +638,8 @@ ra_get_device_max_baudrate(ra_device_t *dev) {
   if (data_len < 41)
     return 115200;
 
-  char product[17] = { 0 };
-  memcpy(product, &data[25], 16);
+  char product[PRODUCT_NAME_LEN + 1] = { 0 };
+  memcpy(product, &data[25], PRODUCT_NAME_LEN);
 
   /*
    * Determine max baud rate from product name (R7FAxxxx format)
