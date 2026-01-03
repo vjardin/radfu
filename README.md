@@ -169,7 +169,7 @@ Important: If ALeRASE is disabled, the device cannot be recovered without the co
 
 - Linux (tested)
 - macOS (supported)
-- Windows (not yet supported)
+- Windows (supported)
 
 ## Supported Devices
 

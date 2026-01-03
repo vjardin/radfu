@@ -163,6 +163,8 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    env:
+      VCPKG_ROOT: C:\vcpkg
     steps:
       - uses: actions/checkout@v4
 
@@ -172,11 +174,21 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install cmocka via vcpkg
+        run: |
+          vcpkg install cmocka:x64-windows
+          vcpkg integrate install
+
       - name: Configure
-        run: meson setup build -Dtests=false
+        run: |
+          $env:PKG_CONFIG_PATH = "C:\vcpkg\installed\x64-windows\lib\pkgconfig"
+          meson setup build --pkg-config-path="C:\vcpkg\installed\x64-windows\lib\pkgconfig" --cmake-prefix-path="C:\vcpkg\installed\x64-windows"
 
       - name: Build
         run: meson compile -C build
+
+      - name: Run tests
+        run: meson test -C build --print-errorlogs
 
       - name: Verify binary
         run: Get-Item build\radfu.exe
