@@ -13,6 +13,7 @@ README="$PROJECT_DIR/README.md"
 MANPAGE="$PROJECT_DIR/build/radfu.1"
 CONTRIBUTING="$PROJECT_DIR/CONTRIBUTING.md"
 LEGAL="$PROJECT_DIR/LEGAL.md"
+HARDWARE="$PROJECT_DIR/HARDWARE.md"
 
 mkdir -p "$WIKI_DIR"
 
@@ -89,6 +90,18 @@ EOF
 cat "$LEGAL" >> "$WIKI_DIR/Legal.md"
 
 #
+# Hardware.md - Board layout and wiring
+#
+echo "Creating Hardware.md..."
+cat > "$WIKI_DIR/Hardware.md" << 'EOF'
+> **Wiki Navigation:** [[Home]] | [[Man Page]] | [[Contributing]] | [[Legal]] | [[Source]](https://github.com/vjardin/radfu/blob/master/HARDWARE.md)
+
+---
+
+EOF
+cat "$HARDWARE" >> "$WIKI_DIR/Hardware.md"
+
+#
 # _Sidebar.md - Navigation sidebar
 #
 echo "Creating _Sidebar.md..."
@@ -97,6 +110,7 @@ cat > "$WIKI_DIR/_Sidebar.md" << 'EOF'
 
 - [[Home]]
 - [[Man Page]]
+- [[Hardware]]
 - [[Contributing]]
 - [[Legal]]
 
