@@ -9,10 +9,7 @@
 #ifndef RACONNECT_H
 #define RACONNECT_H
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <sys/types.h>
+#include "compat.h"
 
 #define RENESAS_VID 0x045B
 #define RENESAS_PID 0x0261
@@ -34,7 +31,7 @@ typedef struct {
 } ra_area_t;
 
 typedef struct {
-  int fd;
+  ra_fd_t fd;
   uint16_t vendor_id;
   uint16_t product_id;
   int max_tries;

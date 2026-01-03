@@ -8,6 +8,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "compat.h"
 #include "radfu.h"
 #include "rapacker.h"
 #include "progress.h"
@@ -19,14 +20,11 @@
 #define STATIC static
 #endif
 
-#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
 
 #define CHUNK_SIZE 1024
@@ -931,11 +929,9 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   close(fd);
 
   if (verify) {
-    const char *tmpdir = getenv("TMPDIR");
-    if (tmpdir == NULL)
-      tmpdir = "/tmp";
+    const char *tmpdir = get_temp_dir();
     char tmpfile[PATH_MAX];
-    snprintf(tmpfile, sizeof(tmpfile), "%s/radfu_verify_XXXXXX", tmpdir);
+    snprintf(tmpfile, sizeof(tmpfile), "%s%cradfu_verify_XXXXXX", tmpdir, path_separator());
     int tmpfd = mkstemp(tmpfile);
     if (tmpfd < 0) {
       warn("failed to create temp file for verify");

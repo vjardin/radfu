@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, win32_port]
   pull_request:
     branches: [master]
 
@@ -159,3 +159,30 @@ jobs:
         with:
           name: radfu-macos-arm64
           path: build/radfu
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Meson
+        run: pip install meson ninja
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: meson setup build -Dtests=false
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Verify binary
+        run: Get-Item build\radfu.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: radfu-windows-x86_64
+          path: build/radfu.exe

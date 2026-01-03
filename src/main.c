@@ -6,16 +6,14 @@
  * RADFU - Renesas RA Device Firmware Update tool
  */
 
+#include "compat.h"
 #include "raconnect.h"
 #include "radfu.h"
 #include "raosis.h"
 
-#include <err.h>
-#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #ifndef VERSION
 #warning "VERSION not defined, using dummy-version"

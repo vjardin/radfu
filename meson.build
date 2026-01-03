@@ -22,24 +22,37 @@ add_project_arguments('-DVERSION="' + version + '"', language : 'c')
 src = files(
   'src/main.c',
   'src/radfu.c',
-  'src/raconnect.c',
   'src/rapacker.c',
   'src/raosis.c',
   'src/progress.c',
+  'src/compat.c',
 )
 
 # Platform-specific source files
-if host_machine.system() == 'darwin'
+if host_machine.system() == 'windows'
+  src += files('src/port_windows.c')
+  src += files('src/raconnect_windows.c')
+  src += files('src/getopt.c')
+  platform_src = files('src/port_windows.c', 'src/raconnect_windows.c', 'src/getopt.c', 'src/compat.c')
+elif host_machine.system() == 'darwin'
   src += files('src/port_macos.c')
+  src += files('src/raconnect.c')
+  platform_src = files('src/port_macos.c', 'src/raconnect.c', 'src/compat.c')
 else
   src += files('src/port_linux.c')
+  src += files('src/raconnect.c')
+  platform_src = files('src/port_linux.c', 'src/raconnect.c', 'src/compat.c')
 endif
 
 # Platform-specific dependencies
+cc = meson.get_compiler('c')
 deps = []
 link_args = []
 
-if host_machine.system() == 'darwin'
+if host_machine.system() == 'windows'
+  # Windows requires SetupAPI for USB device detection
+  deps += cc.find_library('setupapi')
+elif host_machine.system() == 'darwin'
   # macOS requires IOKit and CoreFoundation for USB device detection
   deps += dependency('appleframeworks', modules : ['IOKit', 'CoreFoundation'])
 elif get_option('static')
@@ -81,9 +94,8 @@ if cmocka.found()
     'tests/test_radfu.c',
     'src/radfu.c',
     'src/rapacker.c',
-    'src/raconnect.c',
     'src/progress.c',
-    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    platform_src,
     c_args : ['-DTESTING'],
     dependencies : [cmocka] + deps)
   test('radfu', test_radfu)
@@ -92,8 +104,7 @@ if cmocka.found()
     'tests/test_protocol.c',
     'tests/mock/ramock.c',
     'src/rapacker.c',
-    'src/raconnect.c',
-    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    platform_src,
     dependencies : [cmocka] + deps)
   test('protocol', test_protocol)
 
@@ -101,8 +112,7 @@ if cmocka.found()
     'tests/test_raosis.c',
     'src/raosis.c',
     'src/rapacker.c',
-    'src/raconnect.c',
-    host_machine.system() == 'darwin' ? 'src/port_macos.c' : 'src/port_linux.c',
+    platform_src,
     dependencies : [cmocka] + deps)
   test('raosis', test_raosis)
 endif

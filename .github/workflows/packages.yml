@@ -168,10 +168,33 @@ jobs:
           name: macos-arm64
           path: build/radfu
 
+  windows:
+    name: Windows binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Meson
+        run: pip install meson ninja
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build
+        run: |
+          meson setup build -Dtests=false
+          meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: build/radfu.exe
+
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [deb-debian, deb-ubuntu, rpm-fedora, linux-x86_64-static, linux-arm64, linux-arm64-static, macos]
+    needs: [deb-debian, deb-ubuntu, rpm-fedora, linux-x86_64-static, linux-arm64, linux-arm64-static, macos, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,8 +211,9 @@ jobs:
           mv linux-arm64/radfu radfu-${{ github.ref_name }}-linux-arm64
           mv linux-arm64-static/radfu radfu-${{ github.ref_name }}-linux-arm64-static
           mv macos-arm64/radfu radfu-${{ github.ref_name }}-macos-arm64
+          mv windows-x86_64/radfu.exe radfu-${{ github.ref_name }}-windows-x86_64.exe
           chmod +x radfu-${{ github.ref_name }}-linux-* radfu-${{ github.ref_name }}-macos-*
-          ls -la *.deb *.rpm radfu-*-linux-* radfu-*-macos-*
+          ls -la *.deb *.rpm radfu-*-linux-* radfu-*-macos-* radfu-*-windows-*
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -258,8 +282,14 @@ jobs:
                 curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-macos-arm64
                 chmod +x radfu-${{ github.ref_name }}-macos-arm64
                 sudo mv radfu-${{ github.ref_name }}-macos-arm64 /usr/local/bin/radfu
+
+            Windows:
+
+                curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/radfu-${{ github.ref_name }}-windows-x86_64.exe
+                # Move to a directory in your PATH
           files: |
             *.deb
             *.rpm
             radfu-*-linux-*
             radfu-*-macos-*
+            radfu-*-windows-*

@@ -3,21 +3,16 @@
  *
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * Serial port communication for Renesas RA bootloader
+ * Serial port communication for Renesas RA bootloader (Windows)
  */
-
-#define _DEFAULT_SOURCE
 
 #include "raconnect.h"
 #include "rapacker.h"
-#include <errno.h>
-#include <fcntl.h>
-#include <poll.h>
+
+#include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
 #define SYNC_BYTE 0x00 /* Synchronization byte for connection */
 #define GENERIC_CODE 0x55
@@ -43,32 +38,49 @@ ra_dev_init(ra_device_t *dev) {
 }
 
 static int
-set_serial_attrs(int fd, speed_t speed) {
-  struct termios tty;
+set_serial_attrs(HANDLE hPort, DWORD baudrate) {
+  DCB dcb;
 
-  if (tcgetattr(fd, &tty) < 0)
+  memset(&dcb, 0, sizeof(dcb));
+  dcb.DCBlength = sizeof(dcb);
+
+  if (!GetCommState(hPort, &dcb)) {
+    fprintf(stderr, "GetCommState failed: %lu\n", GetLastError());
     return -1;
+  }
 
-  cfsetospeed(&tty, speed);
-  cfsetispeed(&tty, speed);
+  dcb.BaudRate = baudrate;
+  dcb.ByteSize = 8;
+  dcb.Parity = NOPARITY;
+  dcb.StopBits = ONESTOPBIT;
+  dcb.fBinary = TRUE;
+  dcb.fParity = FALSE;
+  dcb.fOutxCtsFlow = FALSE;
+  dcb.fOutxDsrFlow = FALSE;
+  dcb.fDtrControl = DTR_CONTROL_ENABLE;
+  dcb.fDsrSensitivity = FALSE;
+  dcb.fOutX = FALSE;
+  dcb.fInX = FALSE;
+  dcb.fRtsControl = RTS_CONTROL_ENABLE;
+  dcb.fAbortOnError = FALSE;
 
-  tty.c_cflag &= ~CSIZE;
-  tty.c_cflag |= CS8;
-  tty.c_cflag &= ~PARENB;
-  tty.c_cflag &= ~CSTOPB;
-  tty.c_cflag &= ~CRTSCTS;
-  tty.c_cflag |= CREAD | CLOCAL;
-
-  tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
-  tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-  tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-  tty.c_oflag &= ~(OPOST | ONLCR);
-
-  tty.c_cc[VMIN] = 0;
-  tty.c_cc[VTIME] = 1; /* 100ms timeout */
-
-  if (tcsetattr(fd, TCSANOW, &tty) < 0)
+  if (!SetCommState(hPort, &dcb)) {
+    fprintf(stderr, "SetCommState failed: %lu\n", GetLastError());
     return -1;
+  }
+
+  /* Set timeouts */
+  COMMTIMEOUTS timeouts;
+  timeouts.ReadIntervalTimeout = MAXDWORD;
+  timeouts.ReadTotalTimeoutMultiplier = 0;
+  timeouts.ReadTotalTimeoutConstant = 100; /* 100ms read timeout */
+  timeouts.WriteTotalTimeoutMultiplier = 0;
+  timeouts.WriteTotalTimeoutConstant = 1000; /* 1s write timeout */
+
+  if (!SetCommTimeouts(hPort, &timeouts)) {
+    fprintf(stderr, "SetCommTimeouts failed: %lu\n", GetLastError());
+    return -1;
+  }
 
   return 0;
 }
@@ -78,25 +90,21 @@ ra_open(ra_device_t *dev, const char *port) {
   char portbuf[256];
   char tty_name[64];
   bool auto_detect = false;
+  char port_path[32];
 
   if (port == NULL) {
     if (dev->uart_mode) {
-      warnx("UART mode requires explicit port (-p option)");
+      fprintf(stderr, "UART mode requires explicit port (-p option)\n");
       return -1;
     }
     if (ra_find_port(portbuf, sizeof(portbuf), tty_name, sizeof(tty_name)) < 0) {
-      warnx("no Renesas device found");
+      fprintf(stderr, "no Renesas device found\n");
       return -1;
     }
     port = portbuf;
     auto_detect = true;
   } else {
-    /* Extract tty name from user-provided port */
-    const char *slash = strrchr(port, '/');
-    if (slash != NULL)
-      strncpy(tty_name, slash + 1, sizeof(tty_name) - 1);
-    else
-      strncpy(tty_name, port, sizeof(tty_name) - 1);
+    strncpy(tty_name, port, sizeof(tty_name) - 1);
     tty_name[sizeof(tty_name) - 1] = '\0';
   }
 
@@ -109,26 +117,37 @@ ra_open(ra_device_t *dev, const char *port) {
       fprintf(stderr, "Auto-detected Renesas device\n");
   }
 
-  dev->fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+  /* Windows requires \\.\COMx format for COM ports >= 10 */
+  if (_strnicmp(port, "COM", 3) == 0) {
+    snprintf(port_path, sizeof(port_path), "\\\\.\\%s", port);
+  } else if (_strnicmp(port, "\\\\.\\", 4) == 0) {
+    strncpy(port_path, port, sizeof(port_path) - 1);
+    port_path[sizeof(port_path) - 1] = '\0';
+  } else {
+    snprintf(port_path, sizeof(port_path), "\\\\.\\%s", port);
+  }
+
+  dev->fd = CreateFileA(
+      port_path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (dev->fd == RA_INVALID_FD) {
-    warn("failed to open %s", port);
+    fprintf(stderr, "failed to open %s: %lu\n", port, GetLastError());
     return -1;
   }
 
-  if (set_serial_attrs(dev->fd, B9600) < 0) {
-    warn("failed to set serial attributes");
-    close(dev->fd);
+  if (set_serial_attrs(dev->fd, 9600) < 0) {
+    fprintf(stderr, "failed to set serial attributes\n");
+    CloseHandle(dev->fd);
     dev->fd = RA_INVALID_FD;
     return -1;
   }
 
   /* Flush any stale data in buffers */
-  tcflush(dev->fd, TCIOFLUSH);
+  PurgeComm(dev->fd, PURGE_RXCLEAR | PURGE_TXCLEAR);
 
   /* Check if bootloader is already in command mode (from previous connection) */
   int already_connected = ra_inquire(dev);
   if (already_connected < 0) {
-    close(dev->fd);
+    CloseHandle(dev->fd);
     dev->fd = RA_INVALID_FD;
     return -1;
   }
@@ -141,12 +160,12 @@ ra_open(ra_device_t *dev, const char *port) {
      * 2. Confirm with 0x55, expect boot code (0xC3 or 0xC6)
      */
     if (ra_sync(dev) < 0) {
-      close(dev->fd);
+      CloseHandle(dev->fd);
       dev->fd = RA_INVALID_FD;
       return -1;
     }
     if (ra_confirm(dev) < 0) {
-      close(dev->fd);
+      CloseHandle(dev->fd);
       dev->fd = RA_INVALID_FD;
       return -1;
     }
@@ -165,7 +184,7 @@ ra_close(ra_device_t *dev) {
       ssize_t len = ra_pack_pkt(pkt, sizeof(pkt), BAU_CMD, data, 4, false);
       ra_send(dev, pkt, len);
     }
-    close(dev->fd);
+    CloseHandle(dev->fd);
     dev->fd = RA_INVALID_FD;
   }
 }
@@ -173,52 +192,58 @@ ra_close(ra_device_t *dev) {
 ssize_t
 ra_send(ra_device_t *dev, const uint8_t *data, size_t len) {
   if (dev->fd == RA_INVALID_FD) {
-    errno = EBADF;
+    SetLastError(ERROR_INVALID_HANDLE);
     return -1;
   }
 
-  ssize_t n = write(dev->fd, data, len);
-  if (n < 0)
-    warn("write failed");
+  DWORD bytes_written;
+  if (!WriteFile(dev->fd, data, (DWORD)len, &bytes_written, NULL)) {
+    fprintf(stderr, "write failed: %lu\n", GetLastError());
+    return -1;
+  }
 
-  return n;
+  return (ssize_t)bytes_written;
 }
 
 ssize_t
 ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
   if (dev->fd == RA_INVALID_FD) {
-    errno = EBADF;
+    SetLastError(ERROR_INVALID_HANDLE);
     return -1;
   }
 
-  struct pollfd pfd = {
-    .fd = dev->fd,
-    .events = POLLIN,
-  };
+  /* Set read timeout */
+  COMMTIMEOUTS timeouts;
+  timeouts.ReadIntervalTimeout = MAXDWORD;
+  timeouts.ReadTotalTimeoutMultiplier = 0;
+  timeouts.ReadTotalTimeoutConstant = (DWORD)timeout_ms;
+  timeouts.WriteTotalTimeoutMultiplier = 0;
+  timeouts.WriteTotalTimeoutConstant = 1000;
+
+  if (!SetCommTimeouts(dev->fd, &timeouts)) {
+    fprintf(stderr, "SetCommTimeouts failed: %lu\n", GetLastError());
+    return -1;
+  }
 
   size_t total = 0;
   while (total < len) {
+    DWORD bytes_read;
+
     /* Use shorter timeout for continuation reads after initial data */
-    int poll_timeout = (total > 0) ? 20 : timeout_ms;
-    int ret = poll(&pfd, 1, poll_timeout);
-    if (ret < 0) {
-      warn("poll failed");
-      return -1;
-    }
-    if (ret == 0) {
-      /* Timeout - return what we have */
-      break;
+    if (total > 0) {
+      timeouts.ReadTotalTimeoutConstant = 20;
+      SetCommTimeouts(dev->fd, &timeouts);
     }
 
-    ssize_t n = read(dev->fd, buf + total, len - total);
-    if (n < 0) {
-      warn("read failed");
+    if (!ReadFile(dev->fd, buf + total, (DWORD)(len - total), &bytes_read, NULL)) {
+      fprintf(stderr, "read failed: %lu\n", GetLastError());
       return -1;
     }
-    if (n == 0)
+
+    if (bytes_read == 0)
       break;
 
-    total += n;
+    total += bytes_read;
   }
 
   return (ssize_t)total;
@@ -228,10 +253,12 @@ static int
 ra_sync(ra_device_t *dev) {
   const uint8_t sync[] = { SYNC_BYTE, SYNC_BYTE, SYNC_BYTE };
   uint8_t resp;
+  DWORD bytes_written;
 
   /* Send 3 consecutive SYNC_BYTEs until device responds with SYNC_BYTE */
   for (int i = 0; i < dev->max_tries; i++) {
-    if (write(dev->fd, sync, sizeof(sync)) != sizeof(sync))
+    if (!WriteFile(dev->fd, sync, sizeof(sync), &bytes_written, NULL) ||
+        bytes_written != sizeof(sync))
       continue;
 
     ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);
@@ -241,7 +268,7 @@ ra_sync(ra_device_t *dev) {
     }
   }
 
-  warnx("failed to sync with bootloader");
+  fprintf(stderr, "failed to sync with bootloader\n");
   return -1;
 }
 
@@ -294,9 +321,10 @@ static int
 ra_confirm(ra_device_t *dev) {
   uint8_t cmd = GENERIC_CODE;
   uint8_t resp;
+  DWORD bytes_written;
 
   for (int i = 0; i < dev->max_tries; i++) {
-    if (write(dev->fd, &cmd, 1) != 1)
+    if (!WriteFile(dev->fd, &cmd, 1, &bytes_written, NULL) || bytes_written != 1)
       continue;
 
     ssize_t n = ra_recv(dev, &resp, 1, dev->timeout_ms);
@@ -318,127 +346,31 @@ ra_confirm(ra_device_t *dev) {
     } else if (n == 0) {
       fprintf(stderr, "no response (try %d/%d)\n", i + 1, dev->max_tries);
     } else {
-      warn("read error: retry #%d", i);
+      fprintf(stderr, "read error: retry #%d\n", i);
     }
   }
 
-  warnx("failed to establish connection after %d tries", dev->max_tries);
+  fprintf(stderr, "failed to establish connection after %d tries\n", dev->max_tries);
   return -1;
-}
-
-static speed_t
-baudrate_to_speed(uint32_t baudrate) {
-  switch (baudrate) {
-  case 9600:
-    return B9600;
-  case 19200:
-    return B19200;
-  case 38400:
-    return B38400;
-  case 57600:
-    return B57600;
-  case 115200:
-    return B115200;
-#ifdef B230400
-  case 230400:
-    return B230400;
-#endif
-#ifdef B460800
-  case 460800:
-    return B460800;
-#endif
-#ifdef B500000
-  case 500000:
-    return B500000;
-#endif
-#ifdef B576000
-  case 576000:
-    return B576000;
-#endif
-#ifdef B921600
-  case 921600:
-    return B921600;
-#endif
-#ifdef B1000000
-  case 1000000:
-    return B1000000;
-#endif
-#ifdef B1152000
-  case 1152000:
-    return B1152000;
-#endif
-#ifdef B1500000
-  case 1500000:
-    return B1500000;
-#endif
-#ifdef B2000000
-  case 2000000:
-    return B2000000;
-#endif
-#ifdef B2500000
-  case 2500000:
-    return B2500000;
-#endif
-#ifdef B3000000
-  case 3000000:
-    return B3000000;
-#endif
-#ifdef B3500000
-  case 3500000:
-    return B3500000;
-#endif
-#ifdef B4000000
-  case 4000000:
-    return B4000000;
-#endif
-  default:
-    return B0;
-  }
 }
 
 uint32_t
 ra_best_baudrate(uint32_t max) {
-  /* Rates in descending order - must match baudrate_to_speed() support */
+  /* Rates in descending order */
   static const uint32_t rates[] = {
-#ifdef B4000000
     4000000,
-#endif
-#ifdef B3500000
     3500000,
-#endif
-#ifdef B3000000
     3000000,
-#endif
-#ifdef B2500000
     2500000,
-#endif
-#ifdef B2000000
     2000000,
-#endif
-#ifdef B1500000
     1500000,
-#endif
-#ifdef B1152000
     1152000,
-#endif
-#ifdef B1000000
     1000000,
-#endif
-#ifdef B921600
     921600,
-#endif
-#ifdef B576000
     576000,
-#endif
-#ifdef B500000
     500000,
-#endif
-#ifdef B460800
     460800,
-#endif
-#ifdef B230400
     230400,
-#endif
     115200,
     57600,
     38400,
@@ -460,13 +392,6 @@ ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
   uint8_t data[4];
   ssize_t pkt_len, n;
 
-  /* Check if baudrate is supported by termios */
-  speed_t speed = baudrate_to_speed(baudrate);
-  if (speed == B0) {
-    warnx("unsupported baud rate: %u", baudrate);
-    return -1;
-  }
-
   /* Pack baudrate as big-endian */
   data[0] = (baudrate >> 24) & 0xFF;
   data[1] = (baudrate >> 16) & 0xFF;
@@ -482,23 +407,23 @@ ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
 
   n = ra_recv(dev, resp, sizeof(resp), 500);
   if (n < 7) {
-    warnx("short response for baud rate command (got %zd bytes)", n);
+    fprintf(stderr, "short response for baud rate command (got %zd bytes)\n", n);
     return -1;
   }
 
   size_t data_len;
   uint8_t cmd;
   if (ra_unpack_pkt(resp, n, NULL, &data_len, &cmd) < 0) {
-    warnx("baud rate setting failed");
+    fprintf(stderr, "baud rate setting failed\n");
     return -1;
   }
 
   /* Wait 1ms as per spec before changing local baudrate */
-  usleep(1000);
+  Sleep(1);
 
   /* Change local serial port baudrate */
-  if (set_serial_attrs(dev->fd, speed) < 0) {
-    warn("failed to set local baud rate to %u", baudrate);
+  if (set_serial_attrs(dev->fd, baudrate) < 0) {
+    fprintf(stderr, "failed to set local baud rate to %u\n", baudrate);
     return -1;
   }
 

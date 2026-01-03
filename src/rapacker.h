@@ -9,10 +9,7 @@
 #ifndef RAPACKER_H
 #define RAPACKER_H
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <sys/types.h>
+#include "compat.h"
 
 /* Bootloader commands */
 #define INQ_CMD 0x00         /* Inquire connection */

@@ -11,7 +11,6 @@
 #include "raconnect.h"
 
 #include <dirent.h>
-#include <err.h>
 #include <errno.h>
 #include <limits.h>
 #include <linux/limits.h>
