@@ -41,6 +41,7 @@ ra_dev_init(ra_device_t *dev) {
   dev->max_tries = MAX_TRIES;
   dev->timeout_ms = TIMEOUT_MS;
   dev->sel_area = 0;
+  dev->baudrate = 9600; /* Initial baud rate for UART mode */
 }
 
 static int
@@ -159,6 +160,10 @@ ra_open(ra_device_t *dev, const char *port) {
 void
 ra_close(ra_device_t *dev) {
   if (dev->fd >= 0) {
+    /* In UART mode, reset baud rate to 9600 so next connection can sync */
+    if (dev->uart_mode && dev->baudrate != 9600) {
+      ra_set_baudrate(dev, 9600);
+    }
     close(dev->fd);
     dev->fd = -1;
   }
@@ -493,6 +498,8 @@ ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
     warn("failed to set local baud rate to %u", baudrate);
     return -1;
   }
+
+  dev->baudrate = baudrate;
 
   if (baudrate >= 1000000) {
     fprintf(stderr, "Baud rate changed to %.1f Mbps\n", baudrate / 1000000.0);
