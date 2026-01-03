@@ -1,3 +1,10 @@
+radfu (1.1.0-1) unstable; urgency=low
+
+  * Add EK-RA4M2 board layout and wiring documentation
+  * Document application console UART0 on P410/P411
+
+ -- Vincent Jardin <vjardin@free.fr>  Fri, 03 Jan 2025 14:00:00 +0100
+
 radfu (1.0.1-1) unstable; urgency=low
 
   * Refresh man page with USB/UART and DLM documentation
