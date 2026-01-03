@@ -92,4 +92,10 @@ uint32_t ra_best_baudrate(uint32_t max);
 int ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len);
 void ra_print_usb_info(const char *tty_name);
 
+/*
+ * Get max baud rate for USB-serial adapter based on VID/PID
+ * Returns known max rate for adapter, or 115200 for unknown
+ */
+uint32_t ra_get_adapter_max_baudrate(const char *tty_name);
+
 #endif /* RACONNECT_H */

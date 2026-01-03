@@ -608,6 +608,59 @@ ra_get_rmb(ra_device_t *dev, uint32_t *rmb_out) {
   return 0;
 }
 
+uint32_t
+ra_get_device_max_baudrate(ra_device_t *dev) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[64];
+  uint8_t data[64];
+  size_t data_len;
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return 115200;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return 115200;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return 115200;
+
+  if (ra_unpack_pkt(resp, n, data, &data_len, NULL) < 0)
+    return 115200;
+
+  /* Product name is at offset 25, 16 bytes (requires data_len >= 41) */
+  if (data_len < 41)
+    return 115200;
+
+  char product[17] = { 0 };
+  memcpy(product, &data[25], 16);
+
+  /*
+   * Determine max baud rate from product name (R7FAxxxx format)
+   * - RA2 series (R7FA2xxx): 24 MHz SCI, max 1.5 Mbps
+   * - RA4 series (R7FA4xxx): 24 MHz SCI, max 1.5 Mbps
+   * - RA6 series (R7FA6xxx): 60 MHz SCI, max 4 Mbps
+   * - RA8 series (R7FA8xxx): assumed similar to RA6
+   */
+  if (product[0] == 'R' && product[1] == '7' && product[2] == 'F' && product[3] == 'A') {
+    char series = product[4];
+    switch (series) {
+    case '2':
+    case '4':
+      fprintf(stderr, "Device: RA%c series (24 MHz SCI, max 1.5 Mbps)\n", series);
+      return 1500000;
+    case '6':
+    case '8':
+      fprintf(stderr, "Device: RA%c series (60 MHz SCI, max 4 Mbps)\n", series);
+      return 4000000;
+    }
+  }
+
+  return 115200;
+}
+
 #define ID_CODE_LEN 16
 
 int

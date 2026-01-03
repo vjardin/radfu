@@ -33,6 +33,12 @@ int ra_get_dev_info(ra_device_t *dev);
 int ra_get_rmb(ra_device_t *dev, uint32_t *rmb_out);
 
 /*
+ * Query device series max baud rate based on product name
+ * Returns: max baud rate for the MCU series, or 115200 if unknown
+ */
+uint32_t ra_get_device_max_baudrate(ra_device_t *dev);
+
+/*
  * Perform ID authentication with device
  * id_code: 16-byte ID code (hex string parsed to bytes)
  * Returns: 0 on success, -1 on error

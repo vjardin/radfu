@@ -385,29 +385,37 @@ main(int argc, char *argv[]) {
       errx(EXIT_FAILURE, "failed to set baud rate");
     }
   } else if (uart_mode && baudrate == 0) {
-    /* Auto-switch to recommended max baud rate in UART mode */
-    uint32_t rmb;
-    if (ra_get_rmb(&dev, &rmb) == 0 && rmb > 9600) {
-      uint32_t best = ra_best_baudrate(rmb);
-      if (best > 9600) {
-        if (ra_set_baudrate(&dev, best) == 0) {
-          /* Verify communication works at new rate */
-          uint32_t verify;
-          if (ra_get_rmb(&dev, &verify) < 0) {
-            ra_close(&dev);
-            errx(EXIT_FAILURE,
-                "communication failed at %u bps, reset board and use -b 115200 or lower",
-                best);
-          }
-        } else {
-          warnx("auto baud rate failed: device reports %u bps, tried %u bps", rmb, best);
-          warnx("use -b <rate> to select a lower baud rate");
-          /* Fallback to 115200 */
-          if (best > 115200 && ra_set_baudrate(&dev, 115200) == 0) {
-            warnx("using 115200 bps as fallback");
-          } else {
-            warnx("continuing at 9600 bps");
-          }
+    /* Auto-switch to max baud rate in UART mode */
+    /* Get device limit based on MCU series */
+    uint32_t device_max = ra_get_device_max_baudrate(&dev);
+
+    /* Get adapter limit based on USB VID/PID */
+    const char *tty = port;
+    if (tty != NULL) {
+      const char *slash = strrchr(tty, '/');
+      if (slash != NULL)
+        tty = slash + 1;
+    }
+    uint32_t adapter_max = ra_get_adapter_max_baudrate(tty);
+
+    /* Use minimum of device max, adapter max, and termios support */
+    uint32_t target = device_max < adapter_max ? device_max : adapter_max;
+    uint32_t best = ra_best_baudrate(target);
+
+    if (best > 9600) {
+      if (ra_set_baudrate(&dev, best) == 0) {
+        /* Verify communication works at new rate */
+        uint32_t verify;
+        if (ra_get_rmb(&dev, &verify) < 0) {
+          ra_close(&dev);
+          errx(EXIT_FAILURE,
+              "communication failed at %u bps, reset board and use -b 115200 or lower",
+              best);
+        }
+      } else {
+        warnx("baud rate %u bps failed, falling back", best);
+        if (ra_set_baudrate(&dev, 115200) < 0) {
+          warnx("continuing at 9600 bps");
         }
       }
     }

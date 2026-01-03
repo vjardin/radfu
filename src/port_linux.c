@@ -66,6 +66,79 @@ ra_print_usb_info(const char *tty_name) {
   fprintf(stderr, "TTY port:   /dev/%s\n", tty_name);
 }
 
+/*
+ * Known USB-serial adapters and their max reliable baud rates
+ */
+struct usb_serial_adapter {
+  uint16_t vid;
+  uint16_t pid;
+  uint32_t max_baud;
+  const char *name;
+};
+
+static const struct usb_serial_adapter known_adapters[] = {
+  /* FTDI */
+  { 0x0403, 0x6001, 3000000, "FTDI FT232R" },
+  { 0x0403, 0x6010, 3000000, "FTDI FT2232" },
+  { 0x0403, 0x6011, 3000000, "FTDI FT4232" },
+  { 0x0403, 0x6014, 4000000, "FTDI FT232H" },
+  { 0x0403, 0x6015, 3000000, "FTDI FT231X" },
+  /* Silicon Labs */
+  { 0x10c4, 0xea60, 1000000, "CP2102" },
+  { 0x10c4, 0xea61, 2000000, "CP2104" },
+  { 0x10c4, 0xea70, 3000000, "CP2105" },
+  /* WCH */
+  { 0x1a86, 0x7523, 2000000, "CH340" },
+  { 0x1a86, 0x5523, 2000000, "CH341" },
+  /* Prolific */
+  { 0x067b, 0x2303, 1000000, "PL2303" },
+  { 0x067b, 0x23a3, 1000000, "PL2303HXD" },
+  { 0, 0, 0, NULL }
+};
+
+uint32_t
+ra_get_adapter_max_baudrate(const char *tty_name) {
+  char path[512];
+  char vid_str[16], pid_str[16];
+  unsigned int vid, pid;
+
+  if (tty_name == NULL)
+    return 115200;
+
+  /* Try ttyACM path first (device/../), then ttyUSB path (device/../../) */
+  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../idVendor", tty_name);
+  if (read_sysfs_str(path, vid_str, sizeof(vid_str)) < 0) {
+    snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../../idVendor", tty_name);
+    if (read_sysfs_str(path, vid_str, sizeof(vid_str)) < 0)
+      return 115200;
+  }
+
+  snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../idProduct", tty_name);
+  if (read_sysfs_str(path, pid_str, sizeof(pid_str)) < 0) {
+    snprintf(path, sizeof(path), "/sys/class/tty/%s/device/../../idProduct", tty_name);
+    if (read_sysfs_str(path, pid_str, sizeof(pid_str)) < 0)
+      return 115200;
+  }
+
+  if (sscanf(vid_str, "%x", &vid) != 1 || sscanf(pid_str, "%x", &pid) != 1)
+    return 115200;
+
+  for (const struct usb_serial_adapter *a = known_adapters; a->name != NULL; a++) {
+    if (a->vid == vid && a->pid == pid) {
+      if (a->max_baud >= 1000000) {
+        fprintf(stderr, "Adapter: %s (max %.0f Mbps)\n", a->name, a->max_baud / 1000000.0);
+      } else {
+        fprintf(stderr, "Adapter: %s (max %.0f Kbps)\n", a->name, a->max_baud / 1000.0);
+      }
+      return a->max_baud;
+    }
+  }
+
+  /* Unknown adapter - use conservative default */
+  fprintf(stderr, "Unknown USB-serial adapter [%04x:%04x], using 115200 bps max\n", vid, pid);
+  return 115200;
+}
+
 int
 ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len) {
   DIR *dir;

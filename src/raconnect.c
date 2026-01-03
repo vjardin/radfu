@@ -494,6 +494,12 @@ ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
     return -1;
   }
 
-  fprintf(stderr, "Baud rate changed to %u bps\n", baudrate);
+  if (baudrate >= 1000000) {
+    fprintf(stderr, "Baud rate changed to %.1f Mbps\n", baudrate / 1000000.0);
+  } else if (baudrate >= 1000) {
+    fprintf(stderr, "Baud rate changed to %.1f Kbps\n", baudrate / 1000.0);
+  } else {
+    fprintf(stderr, "Baud rate changed to %u bps\n", baudrate);
+  }
   return 0;
 }
