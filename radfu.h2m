@@ -115,6 +115,113 @@ Supported rates depend on the MCU's SCI clock:
 
 USB communication is not affected by baud rate settings.
 
+[usb vs uart]
+RA microcontrollers support two communication interfaces for the ROM bootloader:
+
+.SS USB Mode (Default)
+Connect directly to the MCU's USB peripheral (e.g., J11 on EK-RA4M2).
+The device appears as a Renesas USB device (VID 045B:PID 0261).
+
+.IP \(bu 4
+Fastest option (~3 seconds for full test suite on RA4M2)
+.IP \(bu
+Auto-detected by radfu (no \fB-p\fR option needed)
+.IP \(bu
+Baud rate settings are ignored (USB handles flow control)
+.IP \(bu
+Requires MCU with USB peripheral
+
+.SS UART Mode (-u option)
+Connect via external USB-UART adapter (FTDI, CH340, CP2102, etc.) to the
+MCU's SCI pins (P109/P110 on RA4M2).
+
+.IP \(bu 4
+Requires \fB-u\fR flag and explicit port: \fBradfu -u -p /dev/ttyUSB0 info\fR
+.IP \(bu
+Slower than USB (~10 seconds for test suite at 1.5 Mbps)
+.IP \(bu
+Use \fB-b\fR to set baud rate (auto-detects adapter max rate)
+.IP \(bu
+Works with any RA MCU (no USB peripheral required)
+.IP \(bu
+Useful for custom boards without USB connector
+
+.SS When to Use Each Mode
+.TS
+l l.
+Use USB when:	Use UART when:
+_
+MCU has USB peripheral	MCU lacks USB peripheral
+Dev board has USB connector	Custom board with SCI only
+Maximum speed needed	USB not available
+.TE
+
+[dlm states]
+Device Lifecycle Management (DLM) controls the security state of the MCU.
+Use \fBradfu dlm\fR to query and \fBradfu dlm-transit <state>\fR to change states.
+
+.SS DLM States and Transit Values
+.TP
+.B ssd \fR- Secure Software Development
+Factory default state. Full access to all features. ID authentication
+disabled. Firmware can be freely read/written.
+
+.TP
+.B nsecsd \fR- Non-Secure Software Development
+TrustZone development state. Secure and non-secure regions configured.
+Debug access available.
+
+.TP
+.B dpl \fR- Deployed
+Production state. Debug access restricted. ID authentication may be
+required. Intended for deployed products.
+
+.TP
+.B lck_dbg \fR- Locked Debug
+Debug interface permanently disabled. Cannot be reversed.
+\fBWARNING:\fR This is irreversible.
+
+.TP
+.B lck_boot \fR- Locked Boot
+Boot interface permanently disabled. Device cannot be reprogrammed
+via bootloader. \fBWARNING:\fR This is irreversible and bricks the device
+for bootloader access.
+
+.SS State Transitions
+.nf
+    ssd --> nsecsd --> dpl --> lck_dbg --> lck_boot
+     |                  |
+     +---> dpl ---------+
+.fi
+
+State transitions are one-way. Once a device moves to a more restricted
+state, it cannot return to a less restricted state. The \fBinit\fR command
+can reset a device to SSD state only if the device supports it and is not
+in a locked state.
+
+.SS Examples
+.nf
+radfu dlm                      # Show current DLM state
+radfu dlm-transit ssd          # Transition to SSD (from CM only)
+radfu dlm-transit nsecsd       # Transition to NSECSD
+radfu dlm-transit dpl          # Transition to Deployed
+radfu dlm-transit lck_dbg      # Lock debug (IRREVERSIBLE)
+radfu dlm-transit lck_boot     # Lock boot interface (IRREVERSIBLE)
+radfu init                     # Factory reset to SSD (if supported)
+.fi
+
+[examples]
+.nf
+radfu info
+radfu read -a 0x0 -s 0x10000 firmware.bin
+radfu write -b 1000000 -a 0x0 -v firmware.bin
+radfu erase -a 0x0 -s 0x10000
+radfu crc -a 0x0 -s 0x10000
+radfu osis
+radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0
+radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter
+.fi
+
 [warnings]
 .B USE AT YOUR OWN RISK
 

@@ -65,15 +65,7 @@ usage(int status) {
       "  -h, --help           Show this help message\n"
       "  -V, --version        Show version\n"
       "\n"
-      "Examples:\n"
-      "  radfu info\n"
-      "  radfu read -a 0x0 -s 0x10000 firmware.bin\n"
-      "  radfu write -b 1000000 -a 0x0 -v firmware.bin\n"
-      "  radfu erase -a 0x0 -s 0x10000\n"
-      "  radfu crc -a 0x0 -s 0x10000\n"
-      "  radfu osis\n"
-      "  radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0\n"
-      "  radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter\n");
+      "See 'man radfu' for examples and detailed documentation.\n");
   exit(status);
 }
 
