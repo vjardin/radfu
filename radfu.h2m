@@ -199,7 +199,35 @@ state, it cannot return to a less restricted state. The \fBinit\fR command
 can reset a device to SSD state only if the device supports it and is not
 in a locked state.
 
-.SS Examples
+.SS DLM State Transition Examples
+
+Forward transition (locking):
+.nf
+    $ radfu dlm-transit dpl
+    DLM state transition: SSD (0x02) -> DPL (0x04)
+    DLM transit complete: SSD -> DPL
+.fi
+
+Authenticated regression (unlocking without erase):
+.nf
+    $ radfu dlm-auth nsecsd hex:000102030405060708090A0B0C0D0E0F
+    DLM state transition: DPL (0x04) -> NSECSD (0x03)
+    Authenticating with NONSECDBG_KEY...
+    Received challenge: 1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D
+    Computed response: 8F7E6D5C4B3A2918F7E6D5C4B3A29180...
+    DLM authentication successful: DPL -> NSECSD
+.fi
+
+Factory reset (erases flash):
+.nf
+    $ radfu init
+    DLM state transition: DPL (0x04) -> SSD (0x02)
+    Initializing device (factory reset)...
+    WARNING: This will erase all flash areas and reset boundaries!
+    Initialize complete: DPL -> SSD
+.fi
+
+.SS Command Summary
 .nf
 radfu dlm                      # Show current DLM state
 radfu dlm-transit ssd          # Transition to SSD (from CM only)
@@ -207,7 +235,10 @@ radfu dlm-transit nsecsd       # Transition to NSECSD
 radfu dlm-transit dpl          # Transition to Deployed
 radfu dlm-transit lck_dbg      # Lock debug (IRREVERSIBLE)
 radfu dlm-transit lck_boot     # Lock boot interface (IRREVERSIBLE)
-radfu init                     # Factory reset to SSD (if supported)
+radfu dlm-auth ssd file:key    # Regress NSECSD -> SSD (SECDBG_KEY)
+radfu dlm-auth nsecsd hex:...  # Regress DPL -> NSECSD (NONSECDBG_KEY)
+radfu dlm-auth rma_req file:k  # Enter RMA (erases flash!)
+radfu init                     # Factory reset to SSD (erases flash)
 .fi
 
 [examples]

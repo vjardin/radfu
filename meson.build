@@ -49,6 +49,13 @@ cc = meson.get_compiler('c')
 deps = []
 link_args = []
 
+# OpenSSL for HMAC-SHA256 (dlm-auth command)
+openssl = dependency('openssl', required : false, static : get_option('static'))
+if openssl.found()
+  deps += openssl
+  add_project_arguments('-DHAVE_OPENSSL', language : 'c')
+endif
+
 if host_machine.system() == 'windows'
   # Windows requires SetupAPI for USB device detection
   deps += cc.find_library('setupapi')

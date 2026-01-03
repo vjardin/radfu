@@ -131,6 +131,27 @@ const char *ra_dlm_state_name(uint8_t code);
 int ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm);
 
 /*
+ * Transition DLM state with authentication (regression)
+ * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
+ * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
+ *
+ * Allowed authenticated transitions (regression without erase):
+ *   NSECSD (0x03) -> SSD (0x02) using SECDBG_KEY
+ *   DPL (0x04) -> NSECSD (0x03) using NONSECDBG_KEY
+ *   SSD (0x02) -> RMA_REQ (0x07) using RMA_KEY (erases flash!)
+ *   DPL (0x04) -> RMA_REQ (0x07) using RMA_KEY (erases flash!)
+ *
+ * Authentication uses challenge-response:
+ *   GrpA/GrpB: HMAC-SHA256(key, challenge || fixed_value)
+ *   GrpC: AES-128-CMAC(key, challenge)
+ *
+ * dest_dlm: destination DLM state code
+ * key: 16-byte plaintext authentication key
+ * Returns: 0 on success, -1 on error
+ */
+int ra_dlm_auth(ra_device_t *dev, uint8_t dest_dlm, const uint8_t *key);
+
+/*
  * Secure/Non-secure boundary settings
  * All sizes are in KB
  */
@@ -215,31 +236,33 @@ int ra_set_param(ra_device_t *dev, uint8_t param_id, uint8_t value);
 int ra_initialize(ra_device_t *dev);
 
 /*
- * Key setting - inject wrapped key for secure boot
+ * Key setting - inject wrapped DLM key for authenticated state transitions
  * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
  * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)
  *
- * key_index: Key slot index (0-7)
- * wrapped_key: Wrapped (encrypted) key data
- * key_len: Length of wrapped key data (32-48 bytes depending on key type)
+ * key_type: Key type (KYTY field per R01AN5562)
+ * wrapped_key: Wrapped key data (W-UFPK + IV + encrypted key + MAC)
+ * key_len: Length of wrapped key data (80 bytes for DLM keys)
  *
- * Key types by index:
- *   0: AES-128-ECB-WUFPK (Update Firmware Protection Key)
- *   1: AES-256-ECB-WUFPK
- *   2-7: Reserved/device-specific
+ * Key types (KYTY):
+ *   0x01: SECDBG_KEY     - Secure debug auth (DLM-SSD regression)
+ *   0x02: NONSECDBG_KEY  - Non-secure debug auth (DLM-NSECSD regression)
+ *   0x03: RMA_KEY        - Return Material Authorization
  *
- * Keys must be wrapped using Renesas key wrapping tools before injection.
+ * Keys must be wrapped using Renesas SKMT or security/rawrapkey.sh script.
+ * See security/SECURITY.md for the wrapping process.
  * Returns: 0 on success, -1 on error
  */
-int ra_key_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key, size_t key_len);
+int ra_key_set(ra_device_t *dev, uint8_t key_type, const uint8_t *wrapped_key, size_t key_len);
 
 /*
- * Key verify - verify injected key at index
- * Checks if a valid key exists at the specified index.
+ * Key verify - verify injected key at key type
+ * Checks if a valid key exists for the specified key type.
+ * key_type: Key type (KYTY: 0x01=SECDBG, 0x02=NONSECDBG, 0x03=RMA)
  * valid_out: pointer to store result (1=valid, 0=invalid/empty), may be NULL
  * Returns: 0 on success, -1 on error
  */
-int ra_key_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
+int ra_key_verify(ra_device_t *dev, uint8_t key_type, int *valid_out);
 
 /*
  * User key setting - inject user-defined wrapped key

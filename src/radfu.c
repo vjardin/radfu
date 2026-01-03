@@ -13,6 +13,11 @@
 #include "rapacker.h"
 #include "progress.h"
 
+#ifdef HAVE_OPENSSL
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#endif
+
 /* Make static functions visible for testing */
 #ifdef TESTING
 #define STATIC
@@ -1152,8 +1157,11 @@ ra_dlm_transit(ra_device_t *dev, uint8_t dest_dlm) {
 
   current_dlm = resp_data[0];
 
-  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, ra_dlm_state_name(current_dlm));
-  printf("Target DLM state:  0x%02X (%s)\n", dest_dlm, ra_dlm_state_name(dest_dlm));
+  printf("DLM state transition: %s (0x%02X) -> %s (0x%02X)\n",
+      ra_dlm_state_name(current_dlm),
+      current_dlm,
+      ra_dlm_state_name(dest_dlm),
+      dest_dlm);
 
   if (current_dlm == dest_dlm) {
     printf("Already in target state\n");
@@ -1486,8 +1494,10 @@ ra_initialize(ra_device_t *dev) {
     return -1;
   }
 
-  printf("Current DLM state: 0x%02X (%s)\n", current_dlm, ra_dlm_state_name(current_dlm));
-  printf("Initializing device (factory reset to SSD state)...\n");
+  printf("DLM state transition: %s (0x%02X) -> SSD (0x02)\n",
+      ra_dlm_state_name(current_dlm),
+      current_dlm);
+  printf("Initializing device (factory reset)...\n");
   printf("WARNING: This will erase all flash areas and reset boundaries!\n");
 
   /* Send initialize command: SDLM = current state, DDLM = SSD */
@@ -1511,7 +1521,7 @@ ra_initialize(ra_device_t *dev) {
   if (unpack_with_error(resp, n, resp_data, &data_len, "initialize") < 0)
     return -1;
 
-  printf("Initialize complete - device reset to SSD state\n");
+  printf("Initialize complete: %s -> SSD\n", ra_dlm_state_name(current_dlm));
   return 0;
 }
 
@@ -1677,4 +1687,203 @@ ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out) {
     *valid_out = valid;
 
   return 0;
+}
+
+/*
+ * Fixed value for HMAC-SHA256 authentication (256 bits / 32 bytes)
+ * Per R01AN5562: Response = HMAC-SHA256(Key, challenge || Fixed value)
+ * The fixed value is defined by Renesas specification.
+ * This is all zeros as per SKMT default behavior.
+ */
+static const uint8_t DLM_AUTH_FIXED_VALUE[32] = { 0x00 };
+
+#ifdef HAVE_OPENSSL
+/*
+ * Compute HMAC-SHA256(key, data)
+ * out: 32-byte output buffer
+ * Returns: 0 on success, -1 on error
+ */
+static int
+compute_hmac_sha256(
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t *out) {
+  unsigned int out_len = 32;
+  uint8_t *result = HMAC(EVP_sha256(), key, (int)key_len, data, data_len, out, &out_len);
+  if (result == NULL || out_len != 32) {
+    warnx("HMAC-SHA256 computation failed");
+    return -1;
+  }
+  return 0;
+}
+#endif
+
+int
+ra_dlm_auth(ra_device_t *dev, uint8_t dest_dlm, const uint8_t *key) {
+#ifndef HAVE_OPENSSL
+  (void)dev;
+  (void)dest_dlm;
+  (void)key;
+  warnx("dlm-auth requires OpenSSL support (rebuild with OpenSSL)");
+  return -1;
+#else
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[64];
+  uint8_t resp_data[32];
+  uint8_t data[4];
+  ssize_t pkt_len, n;
+
+  /* First, get current DLM state */
+  uint8_t current_dlm;
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for DLM state request");
+    return -1;
+  }
+
+  size_t data_len;
+  if (unpack_with_error(resp, n, resp_data, &data_len, "DLM state") < 0)
+    return -1;
+
+  if (data_len < 1) {
+    warnx("invalid DLM response length: %zu", data_len);
+    return -1;
+  }
+
+  current_dlm = resp_data[0];
+
+  printf("DLM state transition: %s (0x%02X) -> %s (0x%02X)\n",
+      ra_dlm_state_name(current_dlm),
+      current_dlm,
+      ra_dlm_state_name(dest_dlm),
+      dest_dlm);
+
+  if (current_dlm == dest_dlm) {
+    printf("Already in target state\n");
+    return 0;
+  }
+
+  /* Validate authenticated transition is allowed */
+  bool valid_transition = false;
+  const char *key_name = "unknown";
+
+  if (current_dlm == DLM_STATE_NSECSD && dest_dlm == DLM_STATE_SSD) {
+    valid_transition = true;
+    key_name = "SECDBG_KEY";
+  } else if (current_dlm == DLM_STATE_DPL && dest_dlm == DLM_STATE_NSECSD) {
+    valid_transition = true;
+    key_name = "NONSECDBG_KEY";
+  } else if ((current_dlm == DLM_STATE_SSD || current_dlm == DLM_STATE_DPL) &&
+             dest_dlm == DLM_STATE_RMA_REQ) {
+    valid_transition = true;
+    key_name = "RMA_KEY";
+    printf("WARNING: Transition to RMA_REQ will ERASE flash memory!\n");
+  }
+
+  if (!valid_transition) {
+    warnx("invalid authenticated transition: %s -> %s",
+        ra_dlm_state_name(current_dlm),
+        ra_dlm_state_name(dest_dlm));
+    warnx("valid authenticated transitions:");
+    warnx("  NSECSD -> SSD (using SECDBG_KEY)");
+    warnx("  DPL -> NSECSD (using NONSECDBG_KEY)");
+    warnx("  SSD/DPL -> RMA_REQ (using RMA_KEY, erases flash!)");
+    return -1;
+  }
+
+  printf("Authenticating with %s...\n", key_name);
+
+  /*
+   * Send authentication command packet:
+   * CMD(0x30) + SDLM(1) + DDLM(1) + CHCT(1)
+   * CHCT: 0x00 = random challenge, 0x01 = MCU unique ID (RMA_REQ only)
+   */
+  data[0] = current_dlm; /* SDLM: source DLM state */
+  data[1] = dest_dlm;    /* DDLM: destination DLM state */
+  data[2] = 0x00;        /* CHCT: use random challenge */
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_AUTH_CMD, data, 3, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Receive challenge (16 bytes) */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 7) {
+    warnx("short response for authentication challenge");
+    return -1;
+  }
+
+  uint8_t challenge[16];
+  if (unpack_with_error(resp, n, challenge, &data_len, "challenge") < 0)
+    return -1;
+
+  if (data_len < 16) {
+    warnx("invalid challenge length: %zu (expected 16)", data_len);
+    return -1;
+  }
+
+  printf("Received challenge: ");
+  for (int i = 0; i < 16; i++)
+    printf("%02X", challenge[i]);
+  printf("\n");
+
+  /*
+   * Compute response:
+   * GrpA/GrpB: HMAC-SHA256(key, challenge || fixed_value)
+   * GrpC: AES-128-CMAC(key, challenge) - not implemented yet
+   *
+   * TODO: Add device type detection to switch between HMAC and CMAC
+   * For now, assume GrpA/GrpB (HMAC-SHA256)
+   */
+
+  /* Build message: challenge (16 bytes) || fixed_value (32 bytes) = 48 bytes */
+  uint8_t message[48];
+  memcpy(message, challenge, 16);
+  memcpy(message + 16, DLM_AUTH_FIXED_VALUE, 32);
+
+  /* Compute HMAC-SHA256 response (32 bytes) */
+  uint8_t response[32];
+  if (compute_hmac_sha256(key, 16, message, 48, response) < 0)
+    return -1;
+
+  printf("Computed response: ");
+  for (int i = 0; i < 32; i++)
+    printf("%02X", response[i]);
+  printf("\n");
+
+  /*
+   * Send response packet:
+   * SOD(0x81) + LNH(0x00) + LNL(0x21) + RES(0x30) + MAC(32) + SUM + ETX
+   */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_AUTH_CMD, response, 32, true);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  /* Receive final status - may take time for RMA_REQ (flash erase) */
+  int timeout = (dest_dlm == DLM_STATE_RMA_REQ) ? 30000 : 5000;
+  n = ra_recv(dev, resp, sizeof(resp), timeout);
+  if (n < 7) {
+    warnx("short response for authentication result");
+    return -1;
+  }
+
+  if (unpack_with_error(resp, n, resp_data, &data_len, "authentication") < 0)
+    return -1;
+
+  printf("DLM authentication successful: %s -> %s\n",
+      ra_dlm_state_name(current_dlm),
+      ra_dlm_state_name(dest_dlm));
+  return 0;
+#endif /* HAVE_OPENSSL */
 }

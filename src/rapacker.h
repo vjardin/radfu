@@ -23,7 +23,8 @@
 #define UKEY_VFY_CMD 0x2B    /* User key verify */
 #define DLM_CMD 0x2C         /* DLM state request */
 #define DLM_TRANSIT_CMD 0x71 /* DLM state transit */
-#define IDA_CMD 0x30         /* ID authentication */
+#define DLM_AUTH_CMD 0x30    /* DLM authenticated transition */
+#define IDA_CMD 0x30         /* ID authentication (same as DLM_AUTH_CMD) */
 #define BND_SET_CMD 0x4E     /* Boundary setting */
 #define BND_CMD 0x4F         /* Boundary request */
 #define INI_CMD 0x50         /* Initialize command */

@@ -35,14 +35,16 @@ usage(int status) {
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
       "  dlm-transit <state>  Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)\n"
+      "  dlm-auth <state> <key>  Authenticated DLM transition (ssd/nsecsd/rma_req)\n"
+      "                       Key format: file:<path> or hex:<32_hex_chars>\n"
       "  boundary       Show secure/non-secure boundary settings\n"
       "  boundary-set   Set TrustZone boundaries (requires --cfs1/--cfs2/--dfs/--srs1/--srs2)\n"
       "  param          Show device parameter (initialization command)\n"
       "  param-set <enable|disable>  Enable/disable initialization command\n"
       "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
-      "  key-set <idx> <file>    Inject wrapped key from file at index\n"
-      "  key-verify <idx>        Verify key at index\n"
+      "  key-set <type> <file>   Inject wrapped DLM key (secdbg|nonsecdbg|rma)\n"
+      "  key-verify <type>       Verify DLM key (secdbg|nonsecdbg|rma)\n"
       "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
       "  ukey-verify <idx>       Verify user key at index\n"
       "\n"
@@ -130,6 +132,7 @@ enum command {
   CMD_CRC,
   CMD_DLM,
   CMD_DLM_TRANSIT,
+  CMD_DLM_AUTH,
   CMD_BOUNDARY,
   CMD_BOUNDARY_SET,
   CMD_PARAM,
@@ -141,6 +144,114 @@ enum command {
   CMD_UKEY_SET,
   CMD_UKEY_VERIFY,
 };
+
+/* DLM key types (KYTY) per R01AN5562 */
+#define KYTY_SECDBG 0x01
+#define KYTY_NONSECDBG 0x02
+#define KYTY_RMA 0x03
+
+/* DLM authentication key length (16 bytes / 128 bits) */
+#define DLM_AUTH_KEY_LEN 16
+
+/*
+ * Parse DLM authentication key from hex string
+ * Returns: 0 on success, -1 on error
+ */
+static int
+parse_hex_key(const char *str, uint8_t *key) {
+  size_t len = strlen(str);
+
+  /* Accept with or without 0x prefix */
+  if (len >= 2 && str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) {
+    str += 2;
+    len -= 2;
+  }
+
+  if (len != DLM_AUTH_KEY_LEN * 2) {
+    warnx("authentication key must be %d hex bytes (%d hex characters)",
+        DLM_AUTH_KEY_LEN,
+        DLM_AUTH_KEY_LEN * 2);
+    return -1;
+  }
+
+  for (int i = 0; i < DLM_AUTH_KEY_LEN; i++) {
+    unsigned int byte;
+    if (sscanf(str + i * 2, "%2x", &byte) != 1) {
+      warnx("invalid hex character in key at position %d", i * 2);
+      return -1;
+    }
+    key[i] = (uint8_t)byte;
+  }
+
+  return 0;
+}
+
+/*
+ * Load DLM authentication key from file (binary, 16 bytes)
+ * Returns: 0 on success, -1 on error
+ */
+static int
+load_key_from_file(const char *filename, uint8_t *key) {
+  FILE *f = fopen(filename, "rb");
+  if (f == NULL) {
+    warn("failed to open key file: %s", filename);
+    return -1;
+  }
+
+  size_t n = fread(key, 1, DLM_AUTH_KEY_LEN, f);
+  fclose(f);
+
+  if (n != DLM_AUTH_KEY_LEN) {
+    warnx("key file must be %d bytes (got %zu)", DLM_AUTH_KEY_LEN, n);
+    return -1;
+  }
+
+  return 0;
+}
+
+/*
+ * Parse authentication key from string
+ * Format: file:<filename> - read 16-byte binary key from file
+ *         hex:<value>     - parse 32-char hex string (with/without 0x)
+ * Returns: 0 on success, -1 on error
+ */
+static int
+parse_auth_key(const char *str, uint8_t *key) {
+  if (strncmp(str, "file:", 5) == 0) {
+    return load_key_from_file(str + 5, key);
+  } else if (strncmp(str, "hex:", 4) == 0) {
+    return parse_hex_key(str + 4, key);
+  } else {
+    warnx("invalid key format: %s", str);
+    warnx("use: file:<filename> for binary key file");
+    warnx("     hex:<hex_value> for hex string (32 chars)");
+    return -1;
+  }
+}
+
+/*
+ * Parse key type from string: accepts numeric (1,2,3) or keywords
+ * Keywords: secdbg, nonsecdbg, rma (case-insensitive)
+ * Returns key type on success, 0 on error
+ */
+static uint8_t
+parse_key_type(const char *str) {
+  if (strcasecmp(str, "secdbg") == 0)
+    return KYTY_SECDBG;
+  if (strcasecmp(str, "nonsecdbg") == 0)
+    return KYTY_NONSECDBG;
+  if (strcasecmp(str, "rma") == 0)
+    return KYTY_RMA;
+
+  /* Try numeric */
+  char *endptr;
+  unsigned long val = strtoul(str, &endptr, 0);
+  if (*endptr != '\0' || val < 1 || val > 3) {
+    warnx("invalid key type: %s (use secdbg, nonsecdbg, rma, or 1-3)", str);
+    return 0;
+  }
+  return (uint8_t)val;
+}
 
 /* Long-only options use values >= 256 */
 #define OPT_CFS1 256
@@ -185,6 +296,7 @@ main(int argc, char *argv[]) {
   uint8_t param_value = 0;
   uint8_t key_index = 0;
   const char *key_file = NULL;
+  uint8_t auth_key[DLM_AUTH_KEY_LEN];
   ra_boundary_t bnd = { 0 };
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
@@ -304,6 +416,21 @@ main(int argc, char *argv[]) {
       dest_dlm = DLM_STATE_LCK_BOOT;
     else
       errx(EXIT_FAILURE, "unknown DLM state: %s (use ssd/nsecsd/dpl/lck_dbg/lck_boot)", state);
+  } else if (strcmp(command, "dlm-auth") == 0) {
+    cmd = CMD_DLM_AUTH;
+    if (optind + 1 >= argc)
+      errx(EXIT_FAILURE, "dlm-auth requires <state> and <key> arguments");
+    const char *state = argv[optind];
+    if (strcasecmp(state, "ssd") == 0)
+      dest_dlm = DLM_STATE_SSD;
+    else if (strcasecmp(state, "nsecsd") == 0)
+      dest_dlm = DLM_STATE_NSECSD;
+    else if (strcasecmp(state, "rma_req") == 0)
+      dest_dlm = DLM_STATE_RMA_REQ;
+    else
+      errx(EXIT_FAILURE, "dlm-auth: invalid target state: %s (use ssd/nsecsd/rma_req)", state);
+    if (parse_auth_key(argv[optind + 1], auth_key) < 0)
+      errx(EXIT_FAILURE, "dlm-auth: invalid key format");
   } else if (strcmp(command, "boundary") == 0) {
     cmd = CMD_BOUNDARY;
   } else if (strcmp(command, "boundary-set") == 0) {
@@ -330,14 +457,18 @@ main(int argc, char *argv[]) {
   } else if (strcmp(command, "key-set") == 0) {
     cmd = CMD_KEY_SET;
     if (optind + 1 >= argc)
-      errx(EXIT_FAILURE, "key-set requires index and file arguments");
-    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+      errx(EXIT_FAILURE, "key-set requires type and file arguments");
+    key_index = parse_key_type(argv[optind]);
+    if (key_index == 0)
+      errx(EXIT_FAILURE, "key-set: invalid key type");
     key_file = argv[optind + 1];
   } else if (strcmp(command, "key-verify") == 0) {
     cmd = CMD_KEY_VERIFY;
     if (optind >= argc)
-      errx(EXIT_FAILURE, "key-verify requires index argument");
-    key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+      errx(EXIT_FAILURE, "key-verify requires type argument");
+    key_index = parse_key_type(argv[optind]);
+    if (key_index == 0)
+      errx(EXIT_FAILURE, "key-verify: invalid key type");
   } else if (strcmp(command, "ukey-set") == 0) {
     cmd = CMD_UKEY_SET;
     if (optind + 1 >= argc)
@@ -450,6 +581,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_DLM_TRANSIT:
     ret = ra_dlm_transit(&dev, dest_dlm);
+    break;
+  case CMD_DLM_AUTH:
+    ret = ra_dlm_auth(&dev, dest_dlm, auth_key);
     break;
   case CMD_BOUNDARY:
     ret = ra_get_boundary(&dev, NULL);
