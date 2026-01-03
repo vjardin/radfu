@@ -46,9 +46,11 @@ EOF
 
 if [ -f "$MANPAGE" ]; then
     # Convert man page to plain text, strip all formatting
-    echo '```' >> "$WIKI_DIR/Man-Page.md"
-    GROFF_NO_SGR=1 groff -man -Tascii -P-c "$MANPAGE" 2>/dev/null | col -bx >> "$WIKI_DIR/Man-Page.md"
-    echo '```' >> "$WIKI_DIR/Man-Page.md"
+    {
+        echo '```'
+        GROFF_NO_SGR=1 groff -man -Tascii -P-c "$MANPAGE" 2>/dev/null | col -bx
+        echo '```'
+    } >> "$WIKI_DIR/Man-Page.md"
 else
     cat >> "$WIKI_DIR/Man-Page.md" << 'EOF'
 **Man page not found.** Build the project first:

@@ -23,8 +23,6 @@ RADFU_VERSION=""
 USE_CI=false
 IS_ROOT=false
 INSTALL_DIR=""
-NEED_PATH_UPDATE=false
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -57,10 +55,11 @@ update_shell_config() {
     fi
 
     # Add PATH export
-    echo "" >> "$CONFIG_FILE"
-    echo "# Added by radfu installer" >> "$CONFIG_FILE"
-    echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$CONFIG_FILE"
-    NEED_PATH_UPDATE=true
+    {
+        echo ""
+        echo "# Added by radfu installer"
+        echo "export PATH=\"\$PATH:$INSTALL_DIR\""
+    } >> "$CONFIG_FILE"
     info "Updated $CONFIG_FILE with PATH"
 }
 
@@ -196,6 +195,7 @@ detect_package_manager() {
             PKG_MANAGER="apt"
             # Detect if Debian or Ubuntu
             if [ -f /etc/os-release ]; then
+                # shellcheck source=/dev/null
                 . /etc/os-release
                 case "$ID" in
                     debian)

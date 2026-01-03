@@ -30,7 +30,7 @@ jobs:
         run: sudo apt-get install -y shellcheck
 
       - name: Run shellcheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck install.sh scripts/*.sh
 
   build:
     name: Build and test
