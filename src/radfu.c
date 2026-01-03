@@ -489,7 +489,12 @@ ra_get_dev_info(ra_device_t *dev) {
 
     printf("Device Group:       %s\n", get_device_group(typ));
     printf("Boot Firmware:      v%d.%d.%d\n", bfv_major, bfv_minor, bfv_build);
-    printf("Max UART Baudrate:  %u bps\n", rmb);
+    if (rmb >= 1000000)
+      printf("Max UART Baudrate:  %u bps (%.1f Mbps)\n", rmb, rmb / 1000000.0);
+    else if (rmb >= 1000)
+      printf("Max UART Baudrate:  %u bps (%.1f Kbps)\n", rmb, rmb / 1000.0);
+    else
+      printf("Max UART Baudrate:  %u bps\n", rmb);
     printf("Number of Areas:    %d\n", noa);
 
     /* Parse Device ID if available (16 bytes starting at offset 9) */
