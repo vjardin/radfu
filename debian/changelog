@@ -1,3 +1,9 @@
+radfu (1.0.1-1) unstable; urgency=low
+
+  * Refresh man page with USB/UART and DLM documentation
+
+ -- Vincent Jardin <vjardin@free.fr>  Fri, 03 Jan 2025 12:00:00 +0100
+
 radfu (1.0.0-1) unstable; urgency=low
 
   * First stable release
