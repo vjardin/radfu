@@ -160,9 +160,12 @@ ra_open(ra_device_t *dev, const char *port) {
 void
 ra_close(ra_device_t *dev) {
   if (dev->fd >= 0) {
-    /* In UART mode, reset baud rate to 9600 so next connection can sync */
-    if (dev->uart_mode && dev->baudrate != 9600) {
-      ra_set_baudrate(dev, 9600);
+    /* In UART mode, silently reset to 9600 so next connection can sync */
+    if (dev->uart_mode && dev->baudrate > 9600) {
+      uint8_t pkt[MAX_PKT_LEN];
+      uint8_t data[4] = {0, 0, 0x25, 0x80}; /* 9600 bps big-endian */
+      ssize_t len = ra_pack_pkt(pkt, sizeof(pkt), BAU_CMD, data, 4, false);
+      ra_send(dev, pkt, len);
     }
     close(dev->fd);
     dev->fd = -1;
@@ -197,7 +200,9 @@ ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
 
   size_t total = 0;
   while (total < len) {
-    int ret = poll(&pfd, 1, timeout_ms);
+    /* Use shorter timeout for continuation reads after initial data */
+    int poll_timeout = (total > 0) ? 20 : timeout_ms;
+    int ret = poll(&pfd, 1, poll_timeout);
     if (ret < 0) {
       warn("poll failed");
       return -1;
