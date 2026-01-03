@@ -388,6 +388,63 @@ baudrate_to_speed(uint32_t baudrate) {
   }
 }
 
+uint32_t
+ra_best_baudrate(uint32_t max) {
+  /* Rates in descending order - must match baudrate_to_speed() support */
+  static const uint32_t rates[] = {
+#ifdef B4000000
+    4000000,
+#endif
+#ifdef B3500000
+    3500000,
+#endif
+#ifdef B3000000
+    3000000,
+#endif
+#ifdef B2500000
+    2500000,
+#endif
+#ifdef B2000000
+    2000000,
+#endif
+#ifdef B1500000
+    1500000,
+#endif
+#ifdef B1152000
+    1152000,
+#endif
+#ifdef B1000000
+    1000000,
+#endif
+#ifdef B921600
+    921600,
+#endif
+#ifdef B576000
+    576000,
+#endif
+#ifdef B500000
+    500000,
+#endif
+#ifdef B460800
+    460800,
+#endif
+#ifdef B230400
+    230400,
+#endif
+    115200,
+    57600,
+    38400,
+    19200,
+    9600,
+  };
+
+  for (size_t i = 0; i < sizeof(rates) / sizeof(rates[0]); i++) {
+    if (rates[i] <= max)
+      return rates[i];
+  }
+  return 9600;
+}
+
 int
 ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
   uint8_t pkt[MAX_PKT_LEN];
@@ -415,9 +472,9 @@ ra_set_baudrate(ra_device_t *dev, uint32_t baudrate) {
   if (ra_send(dev, pkt, pkt_len) < 0)
     return -1;
 
-  n = ra_recv(dev, resp, 7, 500);
+  n = ra_recv(dev, resp, sizeof(resp), 500);
   if (n < 7) {
-    warnx("short response for baud rate command");
+    warnx("short response for baud rate command (got %zd bytes)", n);
     return -1;
   }
 

@@ -26,6 +26,13 @@ int ra_get_area_info(ra_device_t *dev, bool print);
 int ra_get_dev_info(ra_device_t *dev);
 
 /*
+ * Query recommended maximum UART baudrate (RMB) from device signature
+ * rmb_out: pointer to store the RMB value in bps
+ * Returns: 0 on success, -1 on error
+ */
+int ra_get_rmb(ra_device_t *dev, uint32_t *rmb_out);
+
+/*
  * Perform ID authentication with device
  * id_code: 16-byte ID code (hex string parsed to bytes)
  * Returns: 0 on success, -1 on error

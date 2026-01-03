@@ -279,6 +279,11 @@ Tested with an FTDI FT232 adapter. Make sure the voltage jumper is set to 3.3V.
 A compatible adapter can be purchased at:
 https://fr.aliexpress.com/item/1005008296799409.html (select "USB to TTL (D)")
 
+Note: In UART mode, radfu automatically queries the device's recommended maximum baud
+rate and attempts to switch to the highest supported rate. If communication fails at
+high speeds (common with cheaper adapters or long wires), use `-b <rate>` to select
+a lower baud rate. The FT232 adapter reliably works up to 1 Mbps.
+
 ## Documentation Sources
 
 This implementation is based on the official Renesas documentation:

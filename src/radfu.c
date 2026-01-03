@@ -569,6 +569,40 @@ ra_get_dev_info(ra_device_t *dev) {
   return 0;
 }
 
+int
+ra_get_rmb(ra_device_t *dev, uint32_t *rmb_out) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[64];
+  uint8_t data[64];
+  size_t data_len;
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7) {
+    warnx("short response for signature");
+    return -1;
+  }
+
+  if (unpack_with_error(resp, n, data, &data_len, "signature") < 0)
+    return -1;
+
+  if (data_len < 4) {
+    warnx("signature response too short for RMB field");
+    return -1;
+  }
+
+  /* RMB is first 4 bytes of signature response */
+  *rmb_out = be_to_uint32(&data[0]);
+  return 0;
+}
+
 #define ID_CODE_LEN 16
 
 int

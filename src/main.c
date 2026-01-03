@@ -378,11 +378,38 @@ main(int argc, char *argv[]) {
   /* Note: IDA with all-0xFF fails with 0xC1 on unlocked devices
    * Per Renesas docs, unlocked devices skip Authentication phase */
 
-  /* Set baud rate if requested */
+  /* Set baud rate: auto-detect max in UART mode, or use explicit value */
   if (baudrate > 0 && baudrate != 9600) {
     if (ra_set_baudrate(&dev, baudrate) < 0) {
       ra_close(&dev);
       errx(EXIT_FAILURE, "failed to set baud rate");
+    }
+  } else if (uart_mode && baudrate == 0) {
+    /* Auto-switch to recommended max baud rate in UART mode */
+    uint32_t rmb;
+    if (ra_get_rmb(&dev, &rmb) == 0 && rmb > 9600) {
+      uint32_t best = ra_best_baudrate(rmb);
+      if (best > 9600) {
+        if (ra_set_baudrate(&dev, best) == 0) {
+          /* Verify communication works at new rate */
+          uint32_t verify;
+          if (ra_get_rmb(&dev, &verify) < 0) {
+            ra_close(&dev);
+            errx(EXIT_FAILURE,
+                "communication failed at %u bps, reset board and use -b 115200 or lower",
+                best);
+          }
+        } else {
+          warnx("auto baud rate failed: device reports %u bps, tried %u bps", rmb, best);
+          warnx("use -b <rate> to select a lower baud rate");
+          /* Fallback to 115200 */
+          if (best > 115200 && ra_set_baudrate(&dev, 115200) == 0) {
+            warnx("using 115200 bps as fallback");
+          } else {
+            warnx("continuing at 9600 bps");
+          }
+        }
+      }
     }
   }
 

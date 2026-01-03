@@ -81,6 +81,12 @@ ssize_t ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms);
 int ra_set_baudrate(ra_device_t *dev, uint32_t baudrate);
 
 /*
+ * Find highest supported baud rate <= max
+ * Returns: best supported rate, or 9600 if none higher
+ */
+uint32_t ra_best_baudrate(uint32_t max);
+
+/*
  * Platform-specific port detection (implemented in port_linux.c / port_macos.c)
  */
 int ra_find_port(char *buf, size_t len, char *tty_name, size_t tty_len);
