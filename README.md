@@ -284,6 +284,19 @@ rate and attempts to switch to the highest supported rate. If communication fail
 high speeds (common with cheaper adapters or long wires), use `-b <rate>` to select
 a lower baud rate. The FT232 adapter reliably works up to 1 Mbps.
 
+### Performance: USB vs UART
+
+On the RA4M2, USB mode is significantly faster than UART mode due to higher throughput
+and no baud rate negotiation overhead.
+
+| Mode | Test Suite Time | Notes |
+|------|-----------------|-------|
+| USB  | ~3 seconds      | Direct USB CDC, no baud rate switching |
+| UART | ~10 seconds     | 1.5 Mbps with FT232, includes baud negotiation |
+
+USB mode is recommended when available. UART mode is useful when the USB port is
+occupied by the application or when debugging requires a separate communication channel.
+
 ## Documentation Sources
 
 This implementation is based on the official Renesas documentation:
