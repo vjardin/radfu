@@ -163,7 +163,7 @@ ra_close(ra_device_t *dev) {
     /* In UART mode, silently reset to 9600 so next connection can sync */
     if (dev->uart_mode && dev->baudrate > 9600) {
       uint8_t pkt[MAX_PKT_LEN];
-      uint8_t data[4] = {0, 0, 0x25, 0x80}; /* 9600 bps big-endian */
+      uint8_t data[4] = { 0, 0, 0x25, 0x80 }; /* 9600 bps big-endian */
       ssize_t len = ra_pack_pkt(pkt, sizeof(pkt), BAU_CMD, data, 4, false);
       ra_send(dev, pkt, len);
     }
@@ -228,7 +228,7 @@ ra_recv(ra_device_t *dev, uint8_t *buf, size_t len, int timeout_ms) {
 
 static int
 ra_sync(ra_device_t *dev) {
-  const uint8_t sync[] = {SYNC_BYTE, SYNC_BYTE, SYNC_BYTE};
+  const uint8_t sync[] = { SYNC_BYTE, SYNC_BYTE, SYNC_BYTE };
   uint8_t resp;
 
   /* Send 3 consecutive SYNC_BYTEs until device responds with SYNC_BYTE */

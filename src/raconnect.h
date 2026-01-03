@@ -41,9 +41,9 @@ typedef struct {
   int timeout_ms;
   ra_area_t chip_layout[MAX_AREAS];
   int sel_area;
-  bool authenticated;    /* True if ID authentication was performed */
-  bool uart_mode;        /* True for plain UART (P109/P110), false for USB */
-  uint32_t baudrate;     /* Current baud rate (UART mode only) */
+  bool authenticated; /* True if ID authentication was performed */
+  bool uart_mode;     /* True for plain UART (P109/P110), false for USB */
+  uint32_t baudrate;  /* Current baud rate (UART mode only) */
 } ra_device_t;
 
 /*
