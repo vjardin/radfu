@@ -378,8 +378,10 @@ check_prerequisites() {
         fi
         log_info "Using UART mode: $UART_PORT"
     else
-        # USB mode: check for any ttyACM device
-        if ! ls /dev/ttyACM* >/dev/null 2>&1 && ! ls /dev/ttyUSB* >/dev/null 2>&1; then
+        # USB mode: check for serial device (Linux: ttyACM/ttyUSB, macOS: cu.usbmodem)
+        if ! ls /dev/ttyACM* >/dev/null 2>&1 && \
+           ! ls /dev/ttyUSB* >/dev/null 2>&1 && \
+           ! ls /dev/cu.usbmodem* >/dev/null 2>&1; then
             log_fail "No serial device found"
             log_info "Check: J16 shorted, USB connected, board powered"
             exit 1
