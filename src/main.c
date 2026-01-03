@@ -31,7 +31,9 @@ usage(int status) {
       "  info           Show device and memory information\n"
       "  read <file>    Read flash memory to file\n"
       "  write <file>   Write file to flash memory\n"
+      "  verify <file>  Verify flash memory against file\n"
       "  erase          Erase flash sectors\n"
+      "  blank-check    Check if flash region is erased (all 0xFF)\n"
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
       "  dlm-transit <state>  Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)\n"
@@ -128,7 +130,9 @@ enum command {
   CMD_INFO,
   CMD_READ,
   CMD_WRITE,
+  CMD_VERIFY,
   CMD_ERASE,
+  CMD_BLANK_CHECK,
   CMD_CRC,
   CMD_DLM,
   CMD_DLM_TRANSIT,
@@ -393,8 +397,15 @@ main(int argc, char *argv[]) {
     if (optind >= argc)
       errx(EXIT_FAILURE, "write command requires a file argument");
     file = argv[optind];
+  } else if (strcmp(command, "verify") == 0) {
+    cmd = CMD_VERIFY;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "verify command requires a file argument");
+    file = argv[optind];
   } else if (strcmp(command, "erase") == 0) {
     cmd = CMD_ERASE;
+  } else if (strcmp(command, "blank-check") == 0) {
+    cmd = CMD_BLANK_CHECK;
   } else if (strcmp(command, "crc") == 0) {
     cmd = CMD_CRC;
   } else if (strcmp(command, "dlm") == 0) {
@@ -570,8 +581,14 @@ main(int argc, char *argv[]) {
   case CMD_WRITE:
     ret = ra_write(&dev, file, address, size, verify);
     break;
+  case CMD_VERIFY:
+    ret = ra_verify(&dev, file, address, size);
+    break;
   case CMD_ERASE:
     ret = ra_erase(&dev, address, size);
+    break;
+  case CMD_BLANK_CHECK:
+    ret = ra_blank_check(&dev, address, size);
     break;
   case CMD_CRC:
     ret = ra_crc(&dev, address, size, NULL);

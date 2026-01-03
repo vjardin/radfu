@@ -58,6 +58,20 @@ int ra_erase(ra_device_t *dev, uint32_t start, uint32_t size);
 int ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
 
 /*
+ * Verify flash memory against file
+ * Compares flash contents with file, reports first mismatch
+ * Returns: 0 on success (match), -1 on error or mismatch
+ */
+int ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
+
+/*
+ * Check if flash memory region is blank (all 0xFF)
+ * Reports first non-blank byte if found
+ * Returns: 0 on success (blank), -1 on error or non-blank
+ */
+int ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size);
+
+/*
  * Write file to flash memory
  * Returns: 0 on success, -1 on error
  */

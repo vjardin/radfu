@@ -77,9 +77,22 @@ before writing. Use \fB-a\fR to specify the start address. Use \fB-v\fR to
 verify the written data matches the file.
 
 .TP
+.B verify <file>
+Verify flash memory contents against a binary file. Compares the flash region
+with the file and reports the first mismatch if any. Use \fB-a\fR to specify
+the start address and \fB-s\fR for the size. If size is omitted, verifies
+the file size.
+
+.TP
 .B erase
 Erase flash memory sectors. Use \fB-a\fR and \fB-s\fR to specify the address
 range. Use \fB-e\fR (--erase-all) to perform a total area erasure.
+
+.TP
+.B blank-check
+Check if a flash memory region is erased (all bytes are 0xFF). Use \fB-a\fR
+to specify the start address and \fB-s\fR to specify the size. Reports the
+first non-blank byte if the check fails.
 
 [id authentication]
 Some RA devices have ID code protection enabled. To access protected devices,
@@ -246,7 +259,9 @@ radfu init                     # Factory reset to SSD (erases flash)
 radfu info
 radfu read -a 0x0 -s 0x10000 firmware.bin
 radfu write -b 1000000 -a 0x0 -v firmware.bin
+radfu verify -a 0x0 firmware.bin
 radfu erase -a 0x0 -s 0x10000
+radfu blank-check -a 0x0 -s 0x10000
 radfu crc -a 0x0 -s 0x10000
 radfu osis
 radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0
