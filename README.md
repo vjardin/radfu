@@ -297,6 +297,19 @@ and no baud rate negotiation overhead.
 USB mode is recommended when available. UART mode is useful when the USB port is
 occupied by the application or when debugging requires a separate communication channel.
 
+### Application Console (UART0)
+
+The RA4M2 user application typically uses SCI0 (UART0) on pins P410/P411 for serial
+console output. This is separate from the bootloader UART (SCI9 on P109/P110).
+
+| Adapter      | MCU Pin | Function           |
+|--------------|---------|---------------------|
+| TX (blue)    | P411    | RxD (MCU receives)  |
+| RX (green)   | P410    | TxD (MCU transmits) |
+| GND (black)  | GND     | Ground              |
+
+Default baud rate: 115200. Use 3.3V logic levels only.
+
 ## Documentation Sources
 
 This implementation is based on the official Renesas documentation:
