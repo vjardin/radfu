@@ -17,6 +17,9 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RADFU="${RADFU:-$(cd "$SCRIPT_DIR/.." && pwd)/build/radfu}"
 
+# UART configuration
+UART_PORT=${UART_PORT:-}
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,16 +39,18 @@ Options:
   -k, --known       Scan only known/documented commands (default)
   -r, --range M-N   Scan command range (hex), e.g., 0x00-0x20
   -c, --cmd CMD     Run single command with optional data
+  -t, --tty <port>  Use UART mode with specified port (default: USB)
   -v, --verbose     Show full packet details for each command
   -q, --quiet       Show only summary (no packet details)
   -h, --help        Show this help
 
 Examples:
-  $0                    # Scan known commands
-  $0 -a                 # Scan all 0x00-0x7F
-  $0 -r 0x30-0x40       # Scan specific range
-  $0 -c 0x3A            # Single command (signature)
-  $0 -c "0x3B 0x00"     # Command with data (area 0)
+  $0                        # Scan known commands via USB
+  $0 -t /dev/ttyUSB0        # Scan known commands via UART
+  $0 -a                     # Scan all 0x00-0x7F
+  $0 -r 0x30-0x40           # Scan specific range
+  $0 -c 0x3A                # Single command (signature)
+  $0 -c "0x3B 0x00"         # Command with data (area 0)
 
 Known Commands:
   No data:  0x00 (INQ), 0x2C (DLM), 0x3A (SIG), 0x4F (BND)
@@ -64,9 +69,19 @@ check_device() {
         exit 1
     fi
 
-    if ! "$RADFU" info -q >/dev/null 2>&1; then
+    local opts=()
+    if [ -n "$UART_PORT" ]; then
+        if [ ! -c "$UART_PORT" ]; then
+            echo -e "${RED}Error:${NC} UART port not found: $UART_PORT"
+            exit 1
+        fi
+        opts+=(-u -p "$UART_PORT")
+        echo -e "${BLUE}Using UART mode:${NC} $UART_PORT"
+    fi
+
+    if ! "$RADFU" "${opts[@]}" info -q >/dev/null 2>&1; then
         echo -e "${RED}Error:${NC} Cannot connect to device"
-        echo "Check: J16 shorted for boot mode, USB connected"
+        echo "Check: J16 shorted for boot mode, USB/UART connected"
         exit 1
     fi
 }
@@ -77,12 +92,17 @@ run_cmd() {
     local data="$*"
     local output
     local status
+    local opts=()
+
+    if [ -n "$UART_PORT" ]; then
+        opts+=(-u -p "$UART_PORT")
+    fi
 
     if [ -n "$data" ]; then
         # shellcheck disable=SC2086
-        output=$("$RADFU" raw "$cmd" $data 2>&1)
+        output=$("$RADFU" "${opts[@]}" raw "$cmd" $data 2>&1)
     else
-        output=$("$RADFU" raw "$cmd" 2>&1)
+        output=$("$RADFU" "${opts[@]}" raw "$cmd" 2>&1)
     fi
     status=$?
 
@@ -295,6 +315,10 @@ while [ $# -gt 0 ]; do
         -c|--cmd)
             MODE="single"
             SINGLE_CMD="$2"
+            shift 2
+            ;;
+        -t|--tty)
+            UART_PORT="${2:-/dev/ttyUSB0}"
             shift 2
             ;;
         -v|--verbose)
