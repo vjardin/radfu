@@ -66,9 +66,11 @@ version, and memory area layout. This command does not modify the device.
 
 .TP
 .B read <file>
-Read flash memory contents to a binary file. Use \fB-a\fR to specify the
+Read flash memory contents to a file. Use \fB-a\fR to specify the
 start address and \fB-s\fR for the size to read. If size is omitted, reads
-the entire flash area.
+the entire flash area. Use \fB-F\fR to specify the output format (auto-detected
+by default from extension). Supported formats: binary (.bin), Intel HEX (.hex),
+and Motorola S-record (.srec, .s19, .s37).
 
 .TP
 .B write <file>
@@ -171,6 +173,34 @@ radfu write -a 0x10000 app.s19        # Override embedded address
 radfu write -f bin -a 0x0 data.dat    # Force binary, explicit address
 radfu verify firmware.hex             # Verify flash against Intel HEX file
 radfu verify -a 0x08000000 app.s19    # Verify at explicit address
+.fi
+
+[output formats]
+The \fBread\fR command supports multiple output file formats.
+Use \fB-F\fR to explicitly specify the format, or let radfu auto-detect from the
+file extension.
+
+.SS Supported Formats
+.TP
+.B binary (bin)
+Raw binary data. Extensions: .bin, .dat, or any unknown extension.
+No address information included; only raw flash data.
+
+.TP
+.B ihex (Intel HEX)
+Intel HEX format with extended linear address records (type 04) for addresses
+above 64KB. Extensions: .hex, .ihex.
+
+.TP
+.B srec (Motorola S-record)
+Motorola S-record format with S0 header, S3 data records (32-bit addresses),
+and S7 end record. Extensions: .srec, .s19, .s28, .s37, .mot.
+
+.SS Examples
+.nf
+radfu read -a 0x0 -s 0x10000 firmware.hex    # Auto-detect Intel HEX output
+radfu read -a 0x0 -s 0x10000 -F srec out.dat # Force S-record format
+radfu read -a 0x08000000 -s 0x2000 data.bin  # Binary output
 .fi
 
 [usb vs uart]
@@ -303,6 +333,8 @@ radfu init                     # Factory reset to SSD (erases flash)
 .nf
 radfu info
 radfu read -a 0x0 -s 0x10000 firmware.bin
+radfu read -a 0x0 -s 0x10000 firmware.hex        # Intel HEX output
+radfu read -a 0x0 -s 0x10000 -F srec firmware.s19  # S-record output
 radfu write -b 1000000 -a 0x0 -v firmware.bin
 radfu verify -a 0x0 firmware.bin
 radfu erase -a 0x0 -s 0x10000

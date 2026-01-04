@@ -54,9 +54,11 @@ int ra_erase(ra_device_t *dev, uint32_t start, uint32_t size);
 
 /*
  * Read flash memory to file
+ * format: output file format (FORMAT_AUTO to detect from extension)
  * Returns: 0 on success, -1 on error
  */
-int ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
+int ra_read(
+    ra_device_t *dev, const char *file, uint32_t start, uint32_t size, output_format_t format);
 
 /*
  * Verify flash memory against file

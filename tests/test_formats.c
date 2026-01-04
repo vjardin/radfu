@@ -488,6 +488,175 @@ test_srec_lowercase(void **state) {
 }
 
 /*
+ * Output format encoder tests (roundtrip)
+ */
+
+static void
+test_ihex_write_simple(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+  };
+
+  snprintf(filename, sizeof(filename), "%s/write.hex", temp_dir);
+
+  /* Write Intel HEX */
+  assert_int_equal(ihex_write(filename, data, sizeof(data), 0x0000), 0);
+
+  /* Read it back and verify */
+  assert_int_equal(ihex_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x0000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_ihex_write_extended_addr(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE };
+
+  snprintf(filename, sizeof(filename), "%s/write_ext.hex", temp_dir);
+
+  /* Write Intel HEX at high address (requires extended linear address) */
+  assert_int_equal(ihex_write(filename, data, sizeof(data), 0x08000000), 0);
+
+  /* Read it back and verify */
+  assert_int_equal(ihex_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x08000000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_srec_write_simple(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+  };
+
+  snprintf(filename, sizeof(filename), "%s/write.srec", temp_dir);
+
+  /* Write S-record */
+  assert_int_equal(srec_write(filename, data, sizeof(data), 0x0000), 0);
+
+  /* Read it back and verify */
+  assert_int_equal(srec_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x0000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_srec_write_high_addr(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = { 0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44 };
+
+  snprintf(filename, sizeof(filename), "%s/write_high.srec", temp_dir);
+
+  /* Write S-record at high address */
+  assert_int_equal(srec_write(filename, data, sizeof(data), 0x08000000), 0);
+
+  /* Read it back and verify */
+  assert_int_equal(srec_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x08000000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_format_write_auto_ihex(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = { 0x12, 0x34, 0x56, 0x78 };
+
+  snprintf(filename, sizeof(filename), "%s/auto_write.hex", temp_dir);
+
+  /* Write with FORMAT_AUTO - should detect Intel HEX from extension */
+  assert_int_equal(format_write(filename, FORMAT_AUTO, data, sizeof(data), 0x1000), 0);
+
+  /* Read it back */
+  assert_int_equal(ihex_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x1000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_format_write_auto_srec(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+  uint8_t data[] = { 0xAB, 0xCD, 0xEF, 0x01 };
+
+  snprintf(filename, sizeof(filename), "%s/auto_write.s19", temp_dir);
+
+  /* Write with FORMAT_AUTO - should detect S-record from extension */
+  assert_int_equal(format_write(filename, FORMAT_AUTO, data, sizeof(data), 0x2000), 0);
+
+  /* Read it back */
+  assert_int_equal(srec_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_int_equal(out.base_addr, 0x2000);
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+static void
+test_format_write_large_data(void **state) {
+  (void)state;
+  char filename[512];
+  parsed_file_t out;
+
+  /* Test with larger data (multiple records) */
+  uint8_t data[256];
+  for (int i = 0; i < 256; i++)
+    data[i] = (uint8_t)i;
+
+  snprintf(filename, sizeof(filename), "%s/large.hex", temp_dir);
+
+  /* Write Intel HEX */
+  assert_int_equal(ihex_write(filename, data, sizeof(data), 0x0), 0);
+
+  /* Read it back and verify */
+  assert_int_equal(ihex_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+
+  /* Also test S-record with same data */
+  snprintf(filename, sizeof(filename), "%s/large.srec", temp_dir);
+
+  assert_int_equal(srec_write(filename, data, sizeof(data), 0x0), 0);
+
+  assert_int_equal(srec_parse(filename, &out), 0);
+  assert_int_equal(out.size, sizeof(data));
+  assert_memory_equal(out.data, data, sizeof(data));
+
+  free(out.data);
+}
+
+/*
  * format_parse auto-detection tests
  */
 
@@ -583,6 +752,15 @@ main(void) {
     cmocka_unit_test(test_srec_multirecord_manpage),
     cmocka_unit_test(test_srec_crlf_endings),
     cmocka_unit_test(test_srec_lowercase),
+
+    /* Output format encoder tests (roundtrip) */
+    cmocka_unit_test(test_ihex_write_simple),
+    cmocka_unit_test(test_ihex_write_extended_addr),
+    cmocka_unit_test(test_srec_write_simple),
+    cmocka_unit_test(test_srec_write_high_addr),
+    cmocka_unit_test(test_format_write_auto_ihex),
+    cmocka_unit_test(test_format_write_auto_srec),
+    cmocka_unit_test(test_format_write_large_data),
 
     /* format_parse auto-detection tests */
     cmocka_unit_test(test_format_parse_auto_ihex),

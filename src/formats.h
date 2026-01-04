@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * Input file format parsers for Intel HEX and Motorola S-record
+ * File format parsers and encoders for Intel HEX and Motorola S-record
  *
  * Design goal: small and simple implementation covering common use cases.
  * TODO: Consider using an upstream library (e.g., arkku/ihex, arkku/srec)
@@ -16,13 +16,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Supported input file formats */
+/* Supported file formats (used for both input and output) */
 typedef enum {
   FORMAT_AUTO, /* Auto-detect from file extension */
   FORMAT_BIN,  /* Raw binary */
   FORMAT_IHEX, /* Intel HEX */
   FORMAT_SREC, /* Motorola S-record */
 } input_format_t;
+
+/* Output format type (alias for clarity) */
+typedef input_format_t output_format_t;
 
 /* Parsed file data */
 typedef struct {
@@ -68,5 +71,25 @@ int srec_parse(const char *filename, parsed_file_t *out);
  * Returns: 0 on success, -1 on error
  */
 int bin_parse(const char *filename, parsed_file_t *out);
+
+/*
+ * Write data to file in specified format
+ * If format is FORMAT_AUTO, detects from extension
+ * Returns: 0 on success, -1 on error
+ */
+int format_write(
+    const char *filename, output_format_t format, const uint8_t *data, size_t size, uint32_t addr);
+
+/*
+ * Write data as Intel HEX file
+ * Returns: 0 on success, -1 on error
+ */
+int ihex_write(const char *filename, const uint8_t *data, size_t size, uint32_t addr);
+
+/*
+ * Write data as Motorola S-record file
+ * Returns: 0 on success, -1 on error
+ */
+int srec_write(const char *filename, const uint8_t *data, size_t size, uint32_t addr);
 
 #endif /* FORMATS_H */

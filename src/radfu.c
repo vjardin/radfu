@@ -738,7 +738,7 @@ ra_erase(ra_device_t *dev, uint32_t start, uint32_t size) {
 }
 
 int
-ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
+ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, output_format_t format) {
   uint8_t pkt[MAX_PKT_LEN];
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
@@ -746,14 +746,16 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
   uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
-  int fd;
+  uint8_t *buffer = NULL;
+  size_t buffer_offset = 0;
 
   if (set_read_boundaries(dev, start, size == 0 ? 0x3FFFF - start : size, &end) < 0)
     return -1;
 
-  fd = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-  if (fd < 0) {
-    warn("failed to open %s", file);
+  uint32_t total_size = end - start + 1;
+  buffer = malloc(total_size);
+  if (!buffer) {
+    warnx("failed to allocate read buffer");
     return -1;
   }
 
@@ -762,12 +764,12 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
   if (pkt_len < 0) {
-    close(fd);
+    free(buffer);
     return -1;
   }
 
   if (ra_send(dev, pkt, pkt_len) < 0) {
-    close(fd);
+    free(buffer);
     return -1;
   }
 
@@ -779,27 +781,24 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
     n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
     if (n < 7) {
       warnx("short response during read (%zd bytes)", n);
-      close(fd);
+      free(buffer);
       return -1;
     }
 
     size_t chunk_len;
     if (unpack_with_error(resp, n, chunk, &chunk_len, "read") < 0) {
-      close(fd);
+      free(buffer);
       return -1;
     }
 
-    if (write(fd, chunk, chunk_len) != (ssize_t)chunk_len) {
-      warn("write to file failed");
-      close(fd);
-      return -1;
-    }
+    memcpy(buffer + buffer_offset, chunk, chunk_len);
+    buffer_offset += chunk_len;
 
     /* Send ACK for all packets except the last one (per spec 6.20.3) */
     if (i < nr_packets) {
       pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
       if (pkt_len < 0) {
-        close(fd);
+        free(buffer);
         return -1;
       }
       ra_send(dev, pkt, pkt_len);
@@ -809,8 +808,12 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
   }
 
   progress_finish(&prog);
-  close(fd);
-  return 0;
+
+  /* Write buffer to file in specified format */
+  int ret = format_write(file, format, buffer, buffer_offset, start);
+  free(buffer);
+
+  return ret;
 }
 
 int
@@ -1139,7 +1142,7 @@ ra_write(ra_device_t *dev,
     }
     close(tmpfd);
 
-    if (ra_read(dev, tmpfile, start, size) < 0) {
+    if (ra_read(dev, tmpfile, start, size, FORMAT_BIN) < 0) {
       unlink(tmpfile);
       free(parsed.data);
       return -1;
