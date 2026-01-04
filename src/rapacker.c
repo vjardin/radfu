@@ -16,21 +16,21 @@ static const struct {
   const char *name;
   const char *desc;
 } error_codes[] = {
-  { ERR_UNSU, "ERR_UNSU", "unsupported command"                         },
-  { ERR_NSCM, "ERR_NSCM", "unrecognized command"                        },
+  { ERR_UNSU, "ERR_UNSU", "unsupported command"                          },
+  { ERR_NSCM, "ERR_NSCM", "unrecognized command"                         },
   { ERR_PCKT, "ERR_PCKT", "packet error (command recognized, need data)" },
-  { ERR_CHKS, "ERR_CHKS", "checksum mismatch"                  },
-  { ERR_FLOW, "ERR_FLOW", "command flow error"                 },
-  { ERR_ADDR, "ERR_ADDR", "invalid address"                    },
-  { ERR_BAUD, "ERR_BAUD", "baud rate margin error"             },
-  { ERR_CMD,  "ERR_CMD",  "command not accepted (wrong state)" },
-  { ERR_PROT, "ERR_PROT", "protection error"                   },
-  { ERR_ID,   "ERR_ID",   "ID authentication mismatch"         },
-  { ERR_SERI, "ERR_SERI", "serial programming disabled"        },
-  { ERR_ERA,  "ERR_ERA",  "erase failed"                       },
-  { ERR_WRI,  "ERR_WRI",  "write failed"                       },
-  { ERR_SEQ,  "ERR_SEQ",  "sequencer error"                    },
-  { 0,        NULL,       NULL                                 }
+  { ERR_CHKS, "ERR_CHKS", "checksum mismatch"                            },
+  { ERR_FLOW, "ERR_FLOW", "command flow error"                           },
+  { ERR_ADDR, "ERR_ADDR", "invalid address"                              },
+  { ERR_BAUD, "ERR_BAUD", "baud rate margin error"                       },
+  { ERR_CMD,  "ERR_CMD",  "command not accepted (wrong state)"           },
+  { ERR_PROT, "ERR_PROT", "protection error"                             },
+  { ERR_ID,   "ERR_ID",   "ID authentication mismatch"                   },
+  { ERR_SERI, "ERR_SERI", "serial programming disabled"                  },
+  { ERR_ERA,  "ERR_ERA",  "erase failed"                                 },
+  { ERR_WRI,  "ERR_WRI",  "write failed"                                 },
+  { ERR_SEQ,  "ERR_SEQ",  "sequencer error"                              },
+  { 0,        NULL,       NULL                                           }
 };
 
 const char *
