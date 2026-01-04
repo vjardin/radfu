@@ -42,7 +42,7 @@ usage(int status) {
       "  dlm-auth <state> <key>  Authenticated DLM transition (ssd/nsecsd/rma_req)\n"
       "                       Key format: file:<path> or hex:<32_hex_chars>\n"
       "  boundary       Show secure/non-secure boundary settings\n"
-      "  boundary-set   Set TrustZone boundaries (requires --cfs1/--cfs2/--dfs/--srs1/--srs2)\n"
+      "  boundary-set   Set TrustZone boundaries (--file <rpd> or explicit options)\n"
       "  param          Show device parameter (initialization command)\n"
       "  param-set <enable|disable>  Enable/disable initialization command\n"
       "  init           Initialize device (factory reset to SSD state)\n"
@@ -71,6 +71,7 @@ usage(int status) {
       "      --dfs <KB>       Data flash secure region size\n"
       "      --srs1 <KB>      SRAM secure region size without NSC\n"
       "      --srs2 <KB>      SRAM secure region size (total)\n"
+      "      --file <rpd>     Load boundary settings from .rpd file\n"
       "  -h, --help           Show this help message\n"
       "  -V, --version        Show version\n"
       "\n"
@@ -288,6 +289,82 @@ parse_auth_key(const char *str, uint8_t *key) {
 }
 
 /*
+ * Parse .rpd (Renesas Partition Data) file for TrustZone boundary settings
+ * Format: key=value lines where values are hex (with 0x prefix) in bytes
+ * Keys: FLASH_S_SIZE, FLASH_C_SIZE, RAM_S_SIZE, RAM_C_SIZE, DATA_FLASH_S_SIZE
+ * Converts bytes to KB for boundary settings
+ * Returns: 0 on success, -1 on error
+ */
+static int
+parse_rpd_file(const char *filename, ra_boundary_t *bnd) {
+  FILE *f = fopen(filename, "r");
+  if (!f) {
+    warn("failed to open boundary file: %s", filename);
+    return -1;
+  }
+
+  char line[256];
+  bool found_cfs1 = false, found_cfs2 = false, found_dfs = false;
+  bool found_srs1 = false, found_srs2 = false;
+
+  while (fgets(line, sizeof(line), f)) {
+    char *eq = strchr(line, '=');
+    if (!eq)
+      continue;
+
+    *eq = '\0';
+    const char *key = line;
+    const char *val = eq + 1;
+
+    /* Skip 0x prefix if present */
+    if (val[0] == '0' && (val[1] == 'x' || val[1] == 'X'))
+      val += 2;
+
+    char *endptr;
+    unsigned long bytes = strtoul(val, &endptr, 16);
+
+    /* Convert bytes to KB */
+    uint16_t kb = (uint16_t)(bytes / 1024);
+
+    if (strcmp(key, "FLASH_S_SIZE") == 0) {
+      bnd->cfs1 = kb;
+      found_cfs1 = true;
+    } else if (strcmp(key, "FLASH_C_SIZE") == 0) {
+      bnd->cfs2 = kb;
+      found_cfs2 = true;
+    } else if (strcmp(key, "RAM_S_SIZE") == 0) {
+      bnd->srs1 = kb;
+      found_srs1 = true;
+    } else if (strcmp(key, "RAM_C_SIZE") == 0) {
+      bnd->srs2 = kb;
+      found_srs2 = true;
+    } else if (strcmp(key, "DATA_FLASH_S_SIZE") == 0) {
+      bnd->dfs = kb;
+      found_dfs = true;
+    }
+  }
+
+  fclose(f);
+
+  if (!found_cfs1 || !found_cfs2 || !found_dfs || !found_srs1 || !found_srs2) {
+    warnx("incomplete .rpd file: missing required fields");
+    if (!found_cfs1)
+      warnx("  missing FLASH_S_SIZE (CFS1)");
+    if (!found_cfs2)
+      warnx("  missing FLASH_C_SIZE (CFS2)");
+    if (!found_dfs)
+      warnx("  missing DATA_FLASH_S_SIZE (DFS)");
+    if (!found_srs1)
+      warnx("  missing RAM_S_SIZE (SRS1)");
+    if (!found_srs2)
+      warnx("  missing RAM_C_SIZE (SRS2)");
+    return -1;
+  }
+
+  return 0;
+}
+
+/*
  * Parse key type from string: accepts numeric (1,2,3) or keywords
  * Keywords: secdbg, nonsecdbg, rma (case-insensitive)
  * Returns key type on success, 0 on error
@@ -318,28 +395,30 @@ parse_key_type(const char *str) {
 #define OPT_SRS1 259
 #define OPT_SRS2 260
 #define OPT_AREA 261
+#define OPT_BOUNDARY_FILE 262
 
 static const struct option longopts[] = {
-  { "port",          required_argument, NULL, 'p'      },
-  { "address",       required_argument, NULL, 'a'      },
-  { "size",          required_argument, NULL, 's'      },
-  { "baudrate",      required_argument, NULL, 'b'      },
-  { "id",            required_argument, NULL, 'i'      },
-  { "erase-all",     no_argument,       NULL, 'e'      },
-  { "verify",        no_argument,       NULL, 'v'      },
-  { "input-format",  required_argument, NULL, 'f'      },
-  { "output-format", required_argument, NULL, 'F'      },
-  { "uart",          no_argument,       NULL, 'u'      },
-  { "quiet",         no_argument,       NULL, 'q'      },
-  { "cfs1",          required_argument, NULL, OPT_CFS1 },
-  { "cfs2",          required_argument, NULL, OPT_CFS2 },
-  { "dfs",           required_argument, NULL, OPT_DFS  },
-  { "srs1",          required_argument, NULL, OPT_SRS1 },
-  { "srs2",          required_argument, NULL, OPT_SRS2 },
-  { "area",          required_argument, NULL, OPT_AREA },
-  { "help",          no_argument,       NULL, 'h'      },
-  { "version",       no_argument,       NULL, 'V'      },
-  { NULL,            0,                 NULL, 0        }
+  { "port",          required_argument, NULL, 'p'               },
+  { "address",       required_argument, NULL, 'a'               },
+  { "size",          required_argument, NULL, 's'               },
+  { "baudrate",      required_argument, NULL, 'b'               },
+  { "id",            required_argument, NULL, 'i'               },
+  { "erase-all",     no_argument,       NULL, 'e'               },
+  { "verify",        no_argument,       NULL, 'v'               },
+  { "input-format",  required_argument, NULL, 'f'               },
+  { "output-format", required_argument, NULL, 'F'               },
+  { "uart",          no_argument,       NULL, 'u'               },
+  { "quiet",         no_argument,       NULL, 'q'               },
+  { "cfs1",          required_argument, NULL, OPT_CFS1          },
+  { "cfs2",          required_argument, NULL, OPT_CFS2          },
+  { "dfs",           required_argument, NULL, OPT_DFS           },
+  { "srs1",          required_argument, NULL, OPT_SRS1          },
+  { "srs2",          required_argument, NULL, OPT_SRS2          },
+  { "area",          required_argument, NULL, OPT_AREA          },
+  { "file",          required_argument, NULL, OPT_BOUNDARY_FILE },
+  { "help",          no_argument,       NULL, 'h'               },
+  { "version",       no_argument,       NULL, 'V'               },
+  { NULL,            0,                 NULL, 0                 }
 };
 
 int
@@ -365,6 +444,7 @@ main(int argc, char *argv[]) {
   ra_boundary_t bnd = { 0 };
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
+  const char *boundary_file = NULL;
   int8_t area_koa = -1; /* -1 = not set, 0/1/2 = code/data/config */
   write_entry_t write_entries[MAX_WRITE_FILES];
   int write_count = 0;
@@ -458,6 +538,9 @@ main(int argc, char *argv[]) {
           errx(EXIT_FAILURE, "invalid area: %s (use code/data/config or KOA value)", optarg);
         area_koa = (int8_t)val;
       }
+      break;
+    case OPT_BOUNDARY_FILE:
+      boundary_file = optarg;
       break;
     case 'h':
       usage(EXIT_SUCCESS);
@@ -566,8 +649,23 @@ main(int argc, char *argv[]) {
     cmd = CMD_BOUNDARY;
   } else if (strcmp(command, "boundary-set") == 0) {
     cmd = CMD_BOUNDARY_SET;
-    if (!bnd_cfs1_set || !bnd_cfs2_set || !bnd_dfs_set || !bnd_srs1_set || !bnd_srs2_set)
-      errx(EXIT_FAILURE, "boundary-set requires all options: --cfs1 --cfs2 --dfs --srs1 --srs2");
+    if (boundary_file) {
+      /* Parse .rpd file */
+      if (parse_rpd_file(boundary_file, &bnd) < 0)
+        exit(EXIT_FAILURE);
+      printf("Loaded boundary settings from %s:\n"
+             "  CFS1: %u KB, CFS2: %u KB, DFS: %u KB\n"
+             "  SRS1: %u KB, SRS2: %u KB\n",
+          boundary_file,
+          bnd.cfs1,
+          bnd.cfs2,
+          bnd.dfs,
+          bnd.srs1,
+          bnd.srs2);
+    } else if (!bnd_cfs1_set || !bnd_cfs2_set || !bnd_dfs_set || !bnd_srs1_set || !bnd_srs2_set) {
+      errx(EXIT_FAILURE,
+          "boundary-set requires --file <rpd> or all options: --cfs1 --cfs2 --dfs --srs1 --srs2");
+    }
   } else if (strcmp(command, "param") == 0) {
     cmd = CMD_PARAM;
   } else if (strcmp(command, "param-set") == 0) {
