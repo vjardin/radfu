@@ -2080,3 +2080,156 @@ ra_dlm_auth(ra_device_t *dev, uint8_t dest_dlm, const uint8_t *key) {
   return 0;
 #endif /* HAVE_OPENSSL */
 }
+
+/*
+ * Find config area in chip layout
+ * Returns area index, or -1 if not found
+ */
+static int
+find_config_area(ra_device_t *dev) {
+  for (int i = 0; i < MAX_AREAS; i++) {
+    if (dev->chip_layout[i].koa == KOA_TYPE_CONFIG)
+      return i;
+  }
+  return -1;
+}
+
+/*
+ * Print hex dump with ASCII representation
+ */
+static void
+hexdump(const uint8_t *data, size_t len, uint32_t base_addr) {
+  for (size_t i = 0; i < len; i += 16) {
+    printf("  %08X: ", base_addr + (uint32_t)i);
+
+    /* Hex bytes */
+    for (size_t j = 0; j < 16; j++) {
+      if (i + j < len)
+        printf("%02X ", data[i + j]);
+      else
+        printf("   ");
+      if (j == 7)
+        printf(" ");
+    }
+
+    /* ASCII */
+    printf(" |");
+    for (size_t j = 0; j < 16 && i + j < len; j++) {
+      uint8_t c = data[i + j];
+      printf("%c", (c >= 0x20 && c <= 0x7E) ? c : '.');
+    }
+    printf("|\n");
+  }
+}
+
+int
+ra_config_read(ra_device_t *dev) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[CHUNK_SIZE + 6];
+  uint8_t chunk[CHUNK_SIZE];
+  uint8_t data[8];
+  uint8_t ack_data[1] = { STATUS_OK };
+  ssize_t pkt_len, n;
+
+  /* Find config area */
+  int area = find_config_area(dev);
+  if (area < 0) {
+    warnx("config area not found in chip layout");
+    return -1;
+  }
+
+  uint32_t sad = dev->chip_layout[area].sad;
+  uint32_t ead = dev->chip_layout[area].ead;
+  uint32_t rau = dev->chip_layout[area].rau;
+
+  if (rau == 0) {
+    warnx("config area does not support read operations");
+    return -1;
+  }
+
+  uint32_t size = ead - sad + 1;
+  printf("Config Area (0x%08X - 0x%08X, %u bytes):\n\n", sad, ead, size);
+
+  /* Allocate buffer for config data */
+  uint8_t *config = malloc(size);
+  if (!config) {
+    warnx("failed to allocate config buffer");
+    return -1;
+  }
+
+  /* Set read boundaries */
+  dev->sel_area = area;
+  uint32_to_be(sad, &data[0]);
+  uint32_to_be(ead, &data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+  if (pkt_len < 0) {
+    free(config);
+    return -1;
+  }
+
+  if (ra_send(dev, pkt, pkt_len) < 0) {
+    free(config);
+    return -1;
+  }
+
+  /* Read config area */
+  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
+  size_t offset = 0;
+
+  for (uint32_t i = 0; i < nr_packets; i++) {
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+    if (n < 7) {
+      warnx("short response during config read");
+      free(config);
+      return -1;
+    }
+
+    size_t chunk_len;
+    if (unpack_with_error(resp, n, chunk, &chunk_len, "config read") < 0) {
+      free(config);
+      return -1;
+    }
+
+    memcpy(config + offset, chunk, chunk_len);
+    offset += chunk_len;
+
+    /* Send ACK except for last packet */
+    if (i < nr_packets - 1) {
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
+      if (pkt_len < 0) {
+        free(config);
+        return -1;
+      }
+      ra_send(dev, pkt, pkt_len);
+    }
+  }
+
+  /* Analyze config area */
+  int all_ff = 1;
+  int all_zero = 1;
+  for (size_t i = 0; i < size; i++) {
+    if (config[i] != 0xFF)
+      all_ff = 0;
+    if (config[i] != 0x00)
+      all_zero = 0;
+  }
+
+  if (all_ff) {
+    printf("Status: Factory default (all 0xFF)\n");
+    printf("  - No block protection configured\n");
+    printf("  - No permanent protection set\n");
+    printf("  - Flash security protection disabled\n\n");
+  } else if (all_zero) {
+    printf("Status: All zeros (fully protected/locked)\n\n");
+  } else {
+    printf("Status: Configured (non-default values present)\n\n");
+  }
+
+  /* Display hex dump */
+  printf("Raw contents:\n");
+  hexdump(config, size, sad);
+
+  free(config);
+  return 0;
+}

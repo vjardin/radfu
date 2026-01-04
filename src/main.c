@@ -46,6 +46,7 @@ usage(int status) {
       "  param-set <enable|disable>  Enable/disable initialization command\n"
       "  init           Initialize device (factory reset to SSD state)\n"
       "  osis           Show OSIS (ID code protection) status\n"
+      "  config-read    Read and display config area contents\n"
       "  key-set <type> <file>   Inject wrapped DLM key (secdbg|nonsecdbg|rma)\n"
       "  key-verify <type>       Verify DLM key (secdbg|nonsecdbg|rma)\n"
       "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
@@ -146,6 +147,7 @@ enum command {
   CMD_PARAM_SET,
   CMD_INIT,
   CMD_OSIS,
+  CMD_CONFIG_READ,
   CMD_KEY_SET,
   CMD_KEY_VERIFY,
   CMD_UKEY_SET,
@@ -496,6 +498,8 @@ main(int argc, char *argv[]) {
     cmd = CMD_INIT;
   } else if (strcmp(command, "osis") == 0) {
     cmd = CMD_OSIS;
+  } else if (strcmp(command, "config-read") == 0) {
+    cmd = CMD_CONFIG_READ;
   } else if (strcmp(command, "key-set") == 0) {
     cmd = CMD_KEY_SET;
     if (optind + 1 >= argc)
@@ -654,6 +658,9 @@ main(int argc, char *argv[]) {
     if (ret == 0)
       ra_osis_print(&status);
   } break;
+  case CMD_CONFIG_READ:
+    ret = ra_config_read(&dev);
+    break;
   case CMD_KEY_SET: {
     FILE *fp = fopen(key_file, "rb");
     if (fp == NULL) {

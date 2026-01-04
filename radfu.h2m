@@ -101,6 +101,14 @@ Check if a flash memory region is erased (all bytes are 0xFF). Use \fB-a\fR
 to specify the start address and \fB-s\fR to specify the size. Reports the
 first non-blank byte if the check fails.
 
+.TP
+.B config-read
+Read and display the config area contents. Shows a status summary indicating
+whether the area is factory default (all 0xFF) or has been configured, followed
+by a hex dump of the raw contents. The config area contains device settings
+such as block protection (BPS/PBPS), flash security protection (FSPR), and
+boot flags.
+
 [id authentication]
 Some RA devices have ID code protection enabled. To access protected devices,
 you must provide the correct 16-byte ID code using the \fB-i\fR option.
@@ -341,6 +349,7 @@ radfu erase -a 0x0 -s 0x10000
 radfu blank-check -a 0x0 -s 0x10000
 radfu crc -a 0x0 -s 0x10000
 radfu osis
+radfu config-read
 radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0
 radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter
 .fi

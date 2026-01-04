@@ -310,4 +310,11 @@ int ra_ukey_set(ra_device_t *dev, uint8_t key_index, const uint8_t *wrapped_key,
  */
 int ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
 
+/*
+ * Read and display config area contents
+ * Reads the config area (KOA=0x20) and displays known fields.
+ * Returns: 0 on success, -1 on error
+ */
+int ra_config_read(ra_device_t *dev);
+
 #endif /* RADFU_H */
