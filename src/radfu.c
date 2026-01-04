@@ -864,7 +864,6 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, outpu
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
   uint8_t *buffer = NULL;
@@ -880,26 +879,39 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, outpu
     return -1;
   }
 
-  uint32_to_be(start, &data[0]);
-  uint32_to_be(end, &data[4]);
-
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0) {
-    free(buffer);
-    return -1;
-  }
-
-  if (ra_send(dev, pkt, pkt_len) < 0) {
-    free(buffer);
-    return -1;
-  }
-
-  uint32_t nr_packets = (end - start) / CHUNK_SIZE;
+  /*
+   * WORKAROUND: Use single-packet reads (<=1024 bytes each) to avoid
+   * multi-packet ACK protocol issue. See protocol.md for details.
+   */
+  uint32_t nr_chunks = (total_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
   progress_t prog;
-  progress_init(&prog, nr_packets + 1, "Reading");
+  progress_init(&prog, nr_chunks, "Reading");
 
-  for (uint32_t i = 0; i <= nr_packets; i++) {
-    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+  uint32_t current_addr = start;
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining = end - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0) {
+      free(buffer);
+      return -1;
+    }
+
+    if (ra_send(dev, pkt, pkt_len) < 0) {
+      free(buffer);
+      return -1;
+    }
+
+    /* Receive single data packet */
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7) {
       warnx("short response during read (%zd bytes)", n);
       free(buffer);
@@ -914,16 +926,7 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, outpu
 
     memcpy(buffer + buffer_offset, chunk, chunk_len);
     buffer_offset += chunk_len;
-
-    /* Send ACK for all packets except the last one (per spec 6.20.3) */
-    if (i < nr_packets) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len < 0) {
-        free(buffer);
-        return -1;
-      }
-      ra_send(dev, pkt, pkt_len);
-    }
+    current_addr += chunk_size;
 
     progress_update(&prog, i + 1);
   }
@@ -2662,6 +2665,9 @@ status_build_flash_bar(char *bar_buf,
 /*
  * Scan flash area for usage (count non-0xFF bytes)
  * Returns bytes used, or -1 on error
+ *
+ * WORKAROUND: Uses single-packet reads (<=1024 bytes each) to avoid
+ * multi-packet ACK protocol issue. See protocol.md for details.
  */
 static int64_t
 status_scan_flash_usage(ra_device_t *dev, uint32_t sad, uint32_t ead, uint32_t rau) {
@@ -2669,28 +2675,36 @@ status_scan_flash_usage(ra_device_t *dev, uint32_t sad, uint32_t ead, uint32_t r
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
 
   if (rau == 0)
     return -1;
 
-  uint32_t size = ead - sad + 1;
-  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
-
-  /* Pack read command */
-  uint32_to_be(sad, &data[0]);
-  uint32_to_be(ead, &data[4]);
-
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0)
-    return -1;
-
-  if (ra_send(dev, pkt, pkt_len) < 0)
-    return -1;
+  uint32_t total_size = ead - sad + 1;
+  uint32_t nr_chunks = (total_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
   int64_t used = 0;
-  for (uint32_t i = 0; i < nr_packets; i++) {
+  uint32_t current_addr = sad;
+
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining = ead - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0)
+      return -1;
+
+    if (ra_send(dev, pkt, pkt_len) < 0)
+      return -1;
+
+    /* Receive single data packet */
     n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7)
       return -1;
@@ -2708,22 +2722,16 @@ status_scan_flash_usage(ra_device_t *dev, uint32_t sad, uint32_t ead, uint32_t r
         used++;
     }
 
-    /* Send ACK except for last packet */
-    if (i < nr_packets - 1) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len < 0)
-        return -1;
-      ra_send(dev, pkt, pkt_len);
-    }
+    current_addr += chunk_size;
 
     /* Show progress for large areas */
-    if (nr_packets > 10 && (i % (nr_packets / 10)) == 0) {
-      fprintf(stderr, "\rScanning flash... %u%%", (i * 100) / nr_packets);
+    if (nr_chunks > 10 && (i % (nr_chunks / 10)) == 0) {
+      fprintf(stderr, "\rScanning flash... %u%%", (i * 100) / nr_chunks);
       fflush(stderr);
     }
   }
 
-  if (nr_packets > 10)
+  if (nr_chunks > 10)
     fprintf(stderr, "\r                          \r");
 
   return used;
@@ -3182,7 +3190,7 @@ ra_status(ra_device_t *dev) {
   fprintf(stderr, "Scanning code flash usage...\n");
   for (int i = 0; i < MAX_AREAS; i++) {
     ra_area_t *area = &dev->chip_layout[i];
-    if ((area->koa == KOA_TYPE_CODE || area->koa == KOA_TYPE_CODE1) && area->sad != 0 &&
+    if ((area->koa == KOA_TYPE_CODE || area->koa == KOA_TYPE_CODE1) && area->ead != 0 &&
         area->rau != 0) {
       int64_t used = status_scan_flash_usage(dev, area->sad, area->ead, area->rau);
       if (used >= 0)
@@ -3194,7 +3202,7 @@ ra_status(ra_device_t *dev) {
     fprintf(stderr, "Scanning data flash usage...\n");
     for (int i = 0; i < MAX_AREAS; i++) {
       ra_area_t *area = &dev->chip_layout[i];
-      if (area->koa == KOA_TYPE_DATA && area->sad != 0 && area->rau != 0) {
+      if (area->koa == KOA_TYPE_DATA && area->ead != 0 && area->rau != 0) {
         int64_t used = status_scan_flash_usage(dev, area->sad, area->ead, area->rau);
         if (used >= 0)
           data_used += (uint32_t)used;

@@ -178,8 +178,10 @@ ra_send(ra_device_t *dev, const uint8_t *data, size_t len) {
   }
 
   ssize_t n = write(dev->fd, data, len);
-  if (n < 0)
+  if (n < 0) {
     warn("write failed");
+    return n;
+  }
 
   return n;
 }
