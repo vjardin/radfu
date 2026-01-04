@@ -296,8 +296,9 @@ test_blank_check() {
     echo
     log_info "=== Test: blank-check command (check erased region) ==="
     local output
-    # Check a small region at end of data flash (more likely to be blank)
-    if output=$(run_radfu blank-check -a 0x08001F00 -s 0x100 2>&1); then
+    # Check a small region at end of code flash (more likely to be blank)
+    # Note: blank-check only works reliably for code flash, not data flash
+    if output=$(run_radfu blank-check -a 0x0007FF00 -s 0x100 2>&1); then
         if echo "$output" | grep -qiE "blank|erased|0xFF"; then
             log_ok "blank-check: region is blank"
         else
@@ -454,12 +455,8 @@ test_write_data_flash() {
     fi
     log_ok "write: erase succeeded"
 
-    # Blank check after erase
-    if run_radfu blank-check -a $DATA_ADDR -s 0x40 >/dev/null 2>&1; then
-        log_ok "write: blank-check after erase passed"
-    else
-        log_warn "write: blank-check after erase failed (may not be supported)"
-    fi
+    # Note: blank-check after erase skipped - doesn't work for data flash
+    # (data flash returns undefined values after erase per hardware spec)
 
     # Write test pattern
     if ! run_radfu write -a $DATA_ADDR "$TEST_FILE.bin" >/dev/null; then
