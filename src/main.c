@@ -8,6 +8,7 @@
 
 #include "compat.h"
 #include "formats.h"
+#include "progress.h"
 #include "raconnect.h"
 #include "radfu.h"
 #include "raosis.h"
@@ -64,6 +65,7 @@ usage(int status) {
       "  -F, --output-format <fmt> Output file format (auto/bin/ihex/srec)\n"
       "      --area <type>    Select memory area (code/data/config or KOA value)\n"
       "  -u, --uart           Use plain UART mode (P109/P110 pins)\n"
+      "  -q, --quiet          Suppress progress bar output\n"
       "      --cfs1 <KB>      Code flash secure region size without NSC\n"
       "      --cfs2 <KB>      Code flash secure region size (total)\n"
       "      --dfs <KB>       Data flash secure region size\n"
@@ -328,6 +330,7 @@ static const struct option longopts[] = {
   { "input-format",  required_argument, NULL, 'f'      },
   { "output-format", required_argument, NULL, 'F'      },
   { "uart",          no_argument,       NULL, 'u'      },
+  { "quiet",         no_argument,       NULL, 'q'      },
   { "cfs1",          required_argument, NULL, OPT_CFS1 },
   { "cfs2",          required_argument, NULL, OPT_CFS2 },
   { "dfs",           required_argument, NULL, OPT_DFS  },
@@ -368,7 +371,7 @@ main(int argc, char *argv[]) {
   enum command cmd = CMD_NONE;
   int opt;
 
-  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evf:F:uhV", longopts, NULL)) != -1) {
+  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evf:F:uqhV", longopts, NULL)) != -1) {
     switch (opt) {
     case 'p':
       port = optarg;
@@ -417,6 +420,9 @@ main(int argc, char *argv[]) {
       break;
     case 'u':
       uart_mode = true;
+      break;
+    case 'q':
+      progress_global_quiet = 1;
       break;
     case OPT_CFS1:
       bnd.cfs1 = (uint16_t)strtoul(optarg, NULL, 10);

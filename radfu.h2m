@@ -395,7 +395,19 @@ radfu osis
 radfu config-read
 radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0
 radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter
+radfu write -q firmware.bin      # Write without progress bar
 .fi
+
+[progress display]
+During read, write, verify, and blank-check operations, radfu displays a progress
+bar with transfer speed and estimated time remaining:
+
+.nf
+Writing: [###############...............] 50% (32768/65536) 125.3 KB/s ETA 2s
+.fi
+
+The \\fB-q\\fR (\\fB--quiet\\fR) option suppresses progress output. This is useful
+for scripting or when running operations in the background.
 
 [warnings]
 .B USE AT YOUR OWN RISK

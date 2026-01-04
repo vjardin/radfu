@@ -10,6 +10,8 @@
 #define PROGRESS_H
 
 #include <stddef.h>
+#include <stdint.h>
+#include <time.h>
 
 /*
  * Progress callback function type
@@ -25,6 +27,8 @@ typedef struct {
   const char *desc;
   progress_cb_t callback;
   void *user_data;
+  struct timespec start_time; /* Start time for speed/ETA calculation */
+  int quiet;                  /* Suppress output if set */
 } progress_t;
 
 void progress_init(progress_t *p, size_t total, const char *desc);
@@ -36,5 +40,17 @@ void progress_finish(progress_t *p);
  * If set, the callback is called instead of printing to stderr
  */
 void progress_set_callback(progress_t *p, progress_cb_t cb, void *user_data);
+
+/*
+ * Set quiet mode (suppress default progress output to stderr)
+ * Callbacks are still invoked if set
+ */
+void progress_set_quiet(progress_t *p, int quiet);
+
+/*
+ * Global quiet mode setting (affects all progress instances)
+ * Set before calling progress_init to apply to new instances
+ */
+extern int progress_global_quiet;
 
 #endif /* PROGRESS_H */
