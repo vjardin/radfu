@@ -2464,6 +2464,1185 @@ ra_config_read(ra_device_t *dev) {
 }
 
 /*
+ * Status display helper: box drawing characters (UTF-8)
+ */
+#define BOX_TL "\xe2\x95\x94" /* ╔ */
+#define BOX_TR "\xe2\x95\x97" /* ╗ */
+#define BOX_BL "\xe2\x95\x9a" /* ╚ */
+#define BOX_BR "\xe2\x95\x9d" /* ╝ */
+#define BOX_H "\xe2\x95\x90"  /* ═ */
+#define BOX_V "\xe2\x95\x91"  /* ║ */
+#define BOX_LT "\xe2\x95\xa0" /* ╠ */
+#define BOX_RT "\xe2\x95\xa3" /* ╣ */
+
+#define BOX_TL2 "\xe2\x94\x8c"   /* ┌ */
+#define BOX_TR2 "\xe2\x94\x90"   /* ┐ */
+#define BOX_BL2 "\xe2\x94\x94"   /* └ */
+#define BOX_BR2 "\xe2\x94\x98"   /* ┘ */
+#define BOX_H2 "\xe2\x94\x80"    /* ─ */
+#define BOX_V2 "\xe2\x94\x82"    /* │ */
+#define BOX_LT2 "\xe2\x94\x9c"   /* ├ */
+#define BOX_RT2 "\xe2\x94\xa4"   /* ┤ */
+#define BOX_CROSS "\xe2\x94\xbc" /* ┼ */
+#define BOX_TT "\xe2\x94\xac"    /* ┬ */
+#define BOX_TB "\xe2\x94\xb4"    /* ┴ */
+
+/* Bar symbols for different states */
+#define BAR_FULL "\xe2\x96\x88"       /* █ - used, unprotected */
+#define BAR_EMPTY "\xe2\x96\x91"      /* ░ - empty, unprotected */
+#define BAR_PROT_FULL "\xe2\x96\x93"  /* ▓ - used, BPS protected */
+#define BAR_PROT_EMPTY "\xe2\x96\x92" /* ▒ - empty, BPS protected */
+#define BAR_PERM_FULL "\xe2\x97\x86"  /* ◆ - used, PBPS permanently protected */
+#define BAR_PERM_EMPTY "\xe2\x97\x87" /* ◇ - empty, PBPS permanently protected */
+
+/* TrustZone region indicators */
+#define TZ_SECURE "S"
+#define TZ_NSC "N"
+#define TZ_NONSEC " "
+#define CHECK_MARK "\xe2\x9c\x93" /* ✓ */
+
+#define STATUS_WIDTH 78
+
+/*
+ * Calculate display width of a UTF-8 string (not byte length)
+ * Counts multi-byte UTF-8 sequences as single characters
+ */
+static int
+utf8_display_width(const char *s) {
+  int width = 0;
+  while (*s) {
+    if ((*s & 0xC0) != 0x80) /* Not a continuation byte */
+      width++;
+    s++;
+  }
+  return width;
+}
+
+/*
+ * Print a horizontal line with box chars
+ */
+static void
+status_print_hline(const char *left, const char *mid, const char *right, int width) {
+  printf("%s", left);
+  for (int i = 0; i < width - 2; i++)
+    printf("%s", mid);
+  printf("%s\n", right);
+}
+
+/*
+ * Print centered text in a box line
+ */
+static void
+status_print_centered(const char *text, int width) {
+  int display_len = utf8_display_width(text);
+  int pad = (width - 2 - display_len) / 2;
+  printf("%s", BOX_V);
+  for (int i = 0; i < pad; i++)
+    printf(" ");
+  printf("%s", text);
+  for (int i = 0; i < width - 2 - pad - display_len; i++)
+    printf(" ");
+  printf("%s\n", BOX_V);
+}
+
+/*
+ * Print left-aligned text in a box line
+ */
+static void
+status_print_line(const char *text, int width) {
+  int display_len = utf8_display_width(text);
+  printf("%s  %s", BOX_V, text);
+  for (int i = 0; i < width - 4 - display_len; i++)
+    printf(" ");
+  printf("%s\n", BOX_V);
+}
+
+/*
+ * Format inner box content line (│ content padded to inner_width │)
+ * Returns the formatted string in buf
+ */
+static void
+status_format_inner(char *buf, size_t buflen, const char *content, int inner_width) {
+  int content_len = utf8_display_width(content);
+  int pad = inner_width - content_len;
+  if (pad < 0)
+    pad = 0;
+  snprintf(buf, buflen, "%s%s%*s%s", BOX_V2, content, pad, "", BOX_V2);
+}
+
+/*
+ * Check if a block is protected in BPS/PBPS register
+ * Block numbers are 0-indexed, bit 0 = block 0
+ * Returns true if block is protected (bit = 0)
+ */
+static bool
+is_block_protected(const uint8_t *bps, size_t bps_len, int block_num) {
+  if (block_num < 0 || (size_t)block_num >= bps_len * 8)
+    return false;
+  int byte_idx = block_num / 8;
+  int bit_idx = block_num % 8;
+  /* Bit = 0 means protected */
+  return (bps[byte_idx] & (1 << bit_idx)) == 0;
+}
+
+/*
+ * Get block number from address offset (for RA4M2-style layout)
+ * Returns -1 if address is not in code flash
+ * Block 0-7: 8KB each (0x00000 - 0x0FFFF = 64KB)
+ * Block 8+: 32KB each (0x10000 onwards)
+ */
+static int
+addr_to_block(uint32_t offset, uint32_t code_size) {
+  if (offset >= code_size)
+    return -1;
+  if (offset < 0x10000) {
+    /* Blocks 0-7 (8KB each) */
+    return offset / 0x2000; /* 8KB */
+  } else {
+    /* Blocks 8+ (32KB each) */
+    return 8 + (offset - 0x10000) / 0x8000; /* 32KB */
+  }
+}
+
+/*
+ * Generate a protection-aware memory bar
+ * bar_buf: output buffer (must be large enough for bar_width * 4 bytes)
+ * bar_width: number of display characters in the bar
+ * usage_pct: percentage of flash used (0-100)
+ * code_size: total flash size in bytes
+ * cfs1: secure region size in KB (without NSC)
+ * cfs2: secure region size in KB (with NSC)
+ * bps, pbps: block protection arrays (CFG_BPS_LEN bytes each)
+ */
+static void
+status_build_flash_bar(char *bar_buf,
+    int bar_width,
+    int usage_pct,
+    uint32_t code_size,
+    uint16_t cfs1,
+    uint16_t cfs2,
+    const uint8_t *bps,
+    const uint8_t *pbps) {
+
+  bar_buf[0] = '\0';
+  int filled_chars = usage_pct * bar_width / 100;
+  if (filled_chars > bar_width)
+    filled_chars = bar_width;
+
+  for (int i = 0; i < bar_width; i++) {
+    /* Calculate address offset for this bar position */
+    uint32_t offset = (uint32_t)((uint64_t)i * code_size / bar_width);
+    int block = addr_to_block(offset, code_size);
+    uint32_t offset_kb = offset / 1024;
+
+    bool is_used = (i < filled_chars);
+    bool is_bps = (block >= 0) && is_block_protected(bps, CFG_BPS_LEN, block);
+    bool is_pbps = (block >= 0) && is_block_protected(pbps, CFG_BPS_LEN, block);
+
+    /* Determine TrustZone zone (for future use - could add zone markers) */
+    /* bool is_secure = (offset_kb < cfs1); */
+    /* bool is_nsc = (offset_kb >= cfs1 && offset_kb < cfs2); */
+    (void)cfs1;
+    (void)cfs2;
+    (void)offset_kb;
+
+    /* Select symbol based on protection and usage */
+    const char *sym;
+    if (is_pbps) {
+      sym = is_used ? BAR_PERM_FULL : BAR_PERM_EMPTY;
+    } else if (is_bps) {
+      sym = is_used ? BAR_PROT_FULL : BAR_PROT_EMPTY;
+    } else {
+      sym = is_used ? BAR_FULL : BAR_EMPTY;
+    }
+    strcat(bar_buf, sym);
+  }
+}
+
+/*
+ * Scan flash area for usage (count non-0xFF bytes)
+ * Returns bytes used, or -1 on error
+ */
+static int64_t
+status_scan_flash_usage(ra_device_t *dev, uint32_t sad, uint32_t ead, uint32_t rau) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[CHUNK_SIZE + 6];
+  uint8_t chunk[CHUNK_SIZE];
+  uint8_t data[8];
+  uint8_t ack_data[1] = { STATUS_OK };
+  ssize_t pkt_len, n;
+
+  if (rau == 0)
+    return -1;
+
+  uint32_t size = ead - sad + 1;
+  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
+
+  /* Pack read command */
+  uint32_to_be(sad, &data[0]);
+  uint32_to_be(ead, &data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  int64_t used = 0;
+  for (uint32_t i = 0; i < nr_packets; i++) {
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
+    if (n < 7)
+      return -1;
+
+    size_t chunk_len;
+    uint8_t cmd;
+    if (ra_unpack_pkt(resp, n, chunk, &chunk_len, &cmd) < 0)
+      return -1;
+    if (cmd & STATUS_ERR)
+      return -1;
+
+    /* Count non-0xFF bytes */
+    for (size_t j = 0; j < chunk_len; j++) {
+      if (chunk[j] != 0xFF)
+        used++;
+    }
+
+    /* Send ACK except for last packet */
+    if (i < nr_packets - 1) {
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
+      if (pkt_len < 0)
+        return -1;
+      ra_send(dev, pkt, pkt_len);
+    }
+
+    /* Show progress for large areas */
+    if (nr_packets > 10 && (i % (nr_packets / 10)) == 0) {
+      fprintf(stderr, "\rScanning flash... %u%%", (i * 100) / nr_packets);
+      fflush(stderr);
+    }
+  }
+
+  if (nr_packets > 10)
+    fprintf(stderr, "\r                          \r");
+
+  return used;
+}
+
+/*
+ * Get CPU core name from product series
+ */
+static const char *
+status_get_cpu_core(char series) {
+  switch (series) {
+  case '2':
+    return "Cortex-M23";
+  case '4':
+    return "Cortex-M33";
+  case '6':
+    return "Cortex-M33/M4";
+  case '8':
+    return "Cortex-M85";
+  default:
+    return "Unknown";
+  }
+}
+
+/*
+ * Get device group name from TYP field
+ */
+static const char *
+status_get_group(uint8_t typ) {
+  switch (typ) {
+  case TYP_GRP_AB:
+    return "GrpA/GrpB";
+  case TYP_GRP_C:
+    return "GrpC";
+  case TYP_GRP_D:
+    return "GrpD";
+  default:
+    return "Unknown";
+  }
+}
+
+/*
+ * Query signature and return parsed fields
+ * Returns 0 on success, -1 on error
+ */
+static int
+status_query_signature(ra_device_t *dev,
+    char *product,
+    size_t product_len,
+    uint8_t *typ,
+    uint8_t *bfv_major,
+    uint8_t *bfv_minor,
+    uint8_t *bfv_build,
+    uint32_t *rmb,
+    uint8_t *noa) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[64];
+  uint8_t data[64];
+  size_t data_len;
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, data, &data_len, &cmd) < 0)
+    return -1;
+  if (cmd & STATUS_ERR)
+    return -1;
+
+  if (data_len >= 9) {
+    *rmb = be_to_uint32(&data[0]);
+    *noa = data[4];
+    *typ = data[5];
+    *bfv_major = data[6];
+    *bfv_minor = data[7];
+    *bfv_build = data[8];
+  }
+
+  if (data_len >= 41) {
+    size_t copy_len = product_len - 1 < 16 ? product_len - 1 : 16;
+    memcpy(product, &data[25], copy_len);
+    product[copy_len] = '\0';
+    /* Trim trailing spaces */
+    for (int i = (int)copy_len - 1; i >= 0 && product[i] == ' '; i--)
+      product[i] = '\0';
+  }
+
+  return 0;
+}
+
+/*
+ * Query boundary settings (silent version for status)
+ * Returns 0 on success, -1 on error
+ */
+static int
+status_query_boundary(ra_device_t *dev, ra_boundary_t *bnd) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), BND_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  size_t data_len;
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, resp_data, &data_len, &cmd) < 0)
+    return -1;
+  if ((cmd & STATUS_ERR) || data_len < 10)
+    return -1;
+
+  bnd->cfs1 = be_to_uint16(&resp_data[0]);
+  bnd->cfs2 = be_to_uint16(&resp_data[2]);
+  bnd->dfs = be_to_uint16(&resp_data[4]);
+  bnd->srs1 = be_to_uint16(&resp_data[6]);
+  bnd->srs2 = be_to_uint16(&resp_data[8]);
+
+  return 0;
+}
+
+/*
+ * Query DLM state (silent version for status)
+ * Returns 0 on success, -1 on error
+ */
+static int
+status_query_dlm(ra_device_t *dev, uint8_t *dlm_state) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[16];
+  uint8_t resp_data[8];
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), DLM_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  size_t data_len;
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, resp_data, &data_len, &cmd) < 0)
+    return -1;
+  if ((cmd & STATUS_ERR) || data_len < 1)
+    return -1;
+
+  *dlm_state = resp_data[0];
+  return 0;
+}
+
+/*
+ * Query parameter value (silent version for status)
+ * Returns 0 on success, -1 on error
+ */
+static int
+status_query_param(ra_device_t *dev, uint8_t param_id, uint8_t *value) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), PRM_CMD, &param_id, 1, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  size_t data_len;
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, resp_data, &data_len, &cmd) < 0)
+    return -1;
+  if ((cmd & STATUS_ERR) || data_len < 1)
+    return -1;
+
+  *value = resp_data[0];
+  return 0;
+}
+
+/*
+ * Query key verify (silent version for status)
+ * Returns: 1 if key valid, 0 if not valid, -1 on error (command not supported)
+ */
+static int
+status_query_key_verify(ra_device_t *dev, uint8_t key_type) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t resp_data[16];
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), KEY_VFY_CMD, &key_type, 1, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  size_t data_len;
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, resp_data, &data_len, &cmd) < 0)
+    return -1;
+  if (cmd & STATUS_ERR)
+    return -1;
+
+  /* data[0] = 0x00 means key is valid, 0x01 means empty/invalid */
+  if (data_len >= 1)
+    return (resp_data[0] == 0x00) ? 1 : 0;
+
+  return -1;
+}
+
+/*
+ * Read config area and extract protection info
+ */
+static int
+status_read_config(
+    ra_device_t *dev, int area, bool *fspr_locked, uint8_t *bps, uint8_t *pbps, size_t bps_len) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[CHUNK_SIZE + 6];
+  uint8_t chunk[CHUNK_SIZE];
+  uint8_t data[8];
+  uint8_t ack_data[1] = { STATUS_OK };
+  ssize_t pkt_len, n;
+
+  uint32_t sad = dev->chip_layout[area].sad;
+  uint32_t ead = dev->chip_layout[area].ead;
+  uint32_t rau = dev->chip_layout[area].rau;
+
+  if (rau == 0)
+    return -1;
+
+  uint32_t size = ead - sad + 1;
+  uint8_t *config = malloc(size);
+  if (!config)
+    return -1;
+
+  uint32_to_be(sad, &data[0]);
+  uint32_to_be(ead, &data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+  if (pkt_len < 0) {
+    free(config);
+    return -1;
+  }
+
+  if (ra_send(dev, pkt, pkt_len) < 0) {
+    free(config);
+    return -1;
+  }
+
+  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
+  size_t offset = 0;
+
+  for (uint32_t i = 0; i < nr_packets; i++) {
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+    if (n < 7) {
+      free(config);
+      return -1;
+    }
+
+    size_t chunk_len;
+    uint8_t cmd;
+    if (ra_unpack_pkt(resp, n, chunk, &chunk_len, &cmd) < 0 || (cmd & STATUS_ERR)) {
+      free(config);
+      return -1;
+    }
+
+    memcpy(config + offset, chunk, chunk_len);
+    offset += chunk_len;
+
+    if (i < nr_packets - 1) {
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
+      if (pkt_len >= 0)
+        ra_send(dev, pkt, pkt_len);
+    }
+  }
+
+  /* Extract FSPR from SAS register */
+  if (size > CFG_SAS_OFFSET + 1) {
+    uint16_t sas = config[CFG_SAS_OFFSET] | ((uint16_t)config[CFG_SAS_OFFSET + 1] << 8);
+    *fspr_locked = (sas & SAS_FSPR_BIT) == 0;
+  }
+
+  /* Extract BPS/PBPS */
+  if (size >= CFG_PBPS_OFFSET + CFG_BPS_LEN) {
+    size_t copy_len = bps_len < CFG_BPS_LEN ? bps_len : CFG_BPS_LEN;
+    memcpy(bps, &config[CFG_BPS_OFFSET], copy_len);
+    memcpy(pbps, &config[CFG_PBPS_OFFSET], copy_len);
+  }
+
+  free(config);
+  return 0;
+}
+
+/*
+ * Count protected blocks from BPS/PBPS data
+ */
+static int
+status_count_protected_blocks(const uint8_t *bps, size_t len) {
+  int count = 0;
+  for (size_t i = 0; i < len; i++) {
+    for (int bit = 0; bit < 8; bit++) {
+      if ((bps[i] & (1 << bit)) == 0) /* 0 = protected */
+        count++;
+    }
+  }
+  return count;
+}
+
+int
+ra_status(ra_device_t *dev) {
+  char product[17] = { 0 };
+  uint8_t typ = 0, bfv_major = 0, bfv_minor = 0, bfv_build = 0, noa = 0;
+  uint32_t rmb = 0;
+  uint8_t dlm_state = 0;
+  uint8_t init_param = PARAM_INIT_ENABLED;
+  ra_boundary_t bnd = { 0 };
+  bool have_boundary = false, have_dlm = false, have_param = false;
+  bool fspr_locked = false;
+  uint8_t bps[CFG_BPS_LEN] = { 0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF };
+  uint8_t pbps[CFG_BPS_LEN] = { 0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF };
+  int key_secdbg = -1, key_nonsecdbg = -1, key_rma = -1;
+  char line[256];
+
+  /* Ensure chip layout is populated */
+  if (ra_get_area_info(dev, false) < 0)
+    return -1;
+
+  /* Query device signature */
+  if (status_query_signature(
+          dev, product, sizeof(product), &typ, &bfv_major, &bfv_minor, &bfv_build, &rmb, &noa) <
+      0) {
+    warnx("failed to query device signature");
+    return -1;
+  }
+
+  /* Query DLM state (may not be supported on GrpD) */
+  have_dlm = (status_query_dlm(dev, &dlm_state) == 0);
+
+  /* Query boundary settings (may not be supported on GrpD) */
+  have_boundary = (status_query_boundary(dev, &bnd) == 0);
+
+  /* Query initialization parameter (may not be supported on GrpD) */
+  have_param = (status_query_param(dev, PARAM_ID_INIT, &init_param) == 0);
+
+  /* Query key verification status */
+  key_secdbg = status_query_key_verify(dev, 0x01);
+  key_nonsecdbg = status_query_key_verify(dev, 0x02);
+  key_rma = status_query_key_verify(dev, 0x03);
+
+  /* Read config area for protection settings */
+  int cfg_area = find_config_area(dev);
+  if (cfg_area >= 0) {
+    status_read_config(dev, cfg_area, &fspr_locked, bps, pbps, CFG_BPS_LEN);
+  }
+
+  /* Calculate memory sizes and usage */
+  uint32_t code_size = 0, code_used = 0;
+  uint32_t data_size = 0, data_used = 0;
+  uint32_t config_size = 0;
+  uint32_t code_sad = 0, code_ead = 0;
+  uint32_t data_sad = 0, data_ead = 0;
+  uint32_t cfg_sad = 0, cfg_ead = 0;
+  bool dual_bank = (noa > 4);
+
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->sad == 0 && area->ead == 0)
+      continue;
+
+    uint32_t sz = area->ead - area->sad + 1;
+
+    if (area->koa == KOA_TYPE_CODE || area->koa == KOA_TYPE_CODE1) {
+      if (code_size == 0) {
+        code_sad = area->sad;
+        code_ead = area->ead;
+      } else {
+        if (area->ead > code_ead)
+          code_ead = area->ead;
+      }
+      code_size += sz;
+    } else if (area->koa == KOA_TYPE_DATA) {
+      data_sad = area->sad;
+      data_ead = area->ead;
+      data_size = sz;
+    } else if (area->koa == KOA_TYPE_CONFIG) {
+      cfg_sad = area->sad;
+      cfg_ead = area->ead;
+      config_size = sz;
+    }
+  }
+
+  /* Scan flash usage */
+  fprintf(stderr, "Scanning code flash usage...\n");
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if ((area->koa == KOA_TYPE_CODE || area->koa == KOA_TYPE_CODE1) && area->sad != 0 &&
+        area->rau != 0) {
+      int64_t used = status_scan_flash_usage(dev, area->sad, area->ead, area->rau);
+      if (used >= 0)
+        code_used += (uint32_t)used;
+    }
+  }
+
+  if (data_size > 0 && dev->chip_layout[1].rau != 0) {
+    fprintf(stderr, "Scanning data flash usage...\n");
+    for (int i = 0; i < MAX_AREAS; i++) {
+      ra_area_t *area = &dev->chip_layout[i];
+      if (area->koa == KOA_TYPE_DATA && area->sad != 0 && area->rau != 0) {
+        int64_t used = status_scan_flash_usage(dev, area->sad, area->ead, area->rau);
+        if (used >= 0)
+          data_used += (uint32_t)used;
+      }
+    }
+  }
+
+  /* Print status display */
+  printf("\n");
+  status_print_hline(BOX_TL, BOX_H, BOX_TR, STATUS_WIDTH);
+  status_print_centered("RADFU DEVICE STATUS", STATUS_WIDTH);
+  status_print_hline(BOX_LT, BOX_H, BOX_RT, STATUS_WIDTH);
+
+  /* MCU Info Section */
+  char cpu_core[16] = "Unknown";
+  if (product[0] == 'R' && product[1] == '7' && product[2] == 'F' && product[3] == 'A') {
+    snprintf(cpu_core, sizeof(cpu_core), "%s", status_get_cpu_core(product[4]));
+  }
+
+  snprintf(line,
+      sizeof(line),
+      "MCU: %-16s  Group: %-10s  Core: %s",
+      product,
+      status_get_group(typ),
+      cpu_core);
+  status_print_line(line, STATUS_WIDTH);
+
+  char baud_str[32];
+  if (rmb >= 1000000)
+    snprintf(baud_str, sizeof(baud_str), "%.1f Mbps", rmb / 1000000.0);
+  else if (rmb >= 1000)
+    snprintf(baud_str, sizeof(baud_str), "%.1f Kbps", rmb / 1000.0);
+  else
+    snprintf(baud_str, sizeof(baud_str), "%u bps", rmb);
+
+  snprintf(line,
+      sizeof(line),
+      "Boot FW: v%d.%d.%d      Max Baud: %-10s  Mode: %s",
+      bfv_major,
+      bfv_minor,
+      bfv_build,
+      baud_str,
+      dual_bank ? "Dual Bank" : "Linear");
+  status_print_line(line, STATUS_WIDTH);
+
+  status_print_hline(BOX_LT, BOX_H, BOX_RT, STATUS_WIDTH);
+  status_print_centered("MEMORY LAYOUT", STATUS_WIDTH);
+  status_print_hline(BOX_LT, BOX_H, BOX_RT, STATUS_WIDTH);
+  status_print_line("", STATUS_WIDTH);
+
+  /* Memory block diagram - using fixed width formatting */
+  char size_str[16];
+  char bar_buf[128];
+  int pct;
+
+  /* Inner box: 70 dashes between corners for content width of 68 chars */
+#define INNER_DASHES "──────────────────────────────────────────────────────────────────────"
+
+  /* Inner content width = 70 (same as dash count) */
+#define INNER_WIDTH 70
+  char content[256];
+
+  /* Code Flash - top border */
+  snprintf(line, sizeof(line), "%s%s%s", BOX_TL2, INNER_DASHES, BOX_TR2);
+  status_print_line(line, STATUS_WIDTH);
+
+  /* Code Flash - title line */
+  format_size(code_size, size_str, sizeof(size_str));
+  snprintf(content,
+      sizeof(content),
+      " CODE FLASH   %8s   0x%08X - 0x%08X",
+      size_str,
+      code_sad,
+      code_ead);
+  status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+  status_print_line(line, STATUS_WIDTH);
+
+  /* Code Flash - TrustZone regions indicator */
+  if (have_boundary && (bnd.cfs1 > 0 || bnd.cfs2 > 0)) {
+    uint16_t code_kb = code_size / 1024;
+    int sec_chars = (bnd.cfs1 > 0) ? (int)((uint64_t)bnd.cfs1 * 40 / code_kb) : 0;
+    int nsc_chars =
+        (bnd.cfs2 > bnd.cfs1) ? (int)((uint64_t)(bnd.cfs2 - bnd.cfs1) * 40 / code_kb) : 0;
+    if (sec_chars > 40)
+      sec_chars = 40;
+    if (sec_chars + nsc_chars > 40)
+      nsc_chars = 40 - sec_chars;
+    int ns_chars = 40 - sec_chars - nsc_chars;
+
+    bar_buf[0] = '\0';
+    strcat(bar_buf, " ");
+    for (int i = 0; i < sec_chars; i++)
+      strcat(bar_buf, TZ_SECURE);
+    for (int i = 0; i < nsc_chars; i++)
+      strcat(bar_buf, TZ_NSC);
+    for (int i = 0; i < ns_chars; i++)
+      strcat(bar_buf, TZ_NONSEC);
+
+    char tz_info[64];
+    if (bnd.cfs1 > 0 && bnd.cfs2 > bnd.cfs1)
+      snprintf(tz_info, sizeof(tz_info), "S=%uKB N=%uKB", bnd.cfs1, bnd.cfs2 - bnd.cfs1);
+    else if (bnd.cfs2 > 0)
+      snprintf(tz_info, sizeof(tz_info), "S=%uKB", bnd.cfs2);
+    else
+      tz_info[0] = '\0';
+
+    snprintf(content, sizeof(content), "%s  TZ: %s", bar_buf, tz_info);
+    status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+  }
+
+  /* Code Flash - usage bar with protection indicators */
+  pct = (code_size > 0) ? (int)((uint64_t)code_used * 100 / code_size) : 0;
+  status_build_flash_bar(bar_buf, 40, pct, code_size, bnd.cfs1, bnd.cfs2, bps, pbps);
+  snprintf(content, sizeof(content), " %s  %3d%% used", bar_buf, pct);
+  status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+  status_print_line(line, STATUS_WIDTH);
+
+  /* Data Flash */
+  if (data_size > 0) {
+    /* Separator */
+    snprintf(line, sizeof(line), "%s%s%s", BOX_LT2, INNER_DASHES, BOX_RT2);
+    status_print_line(line, STATUS_WIDTH);
+
+    /* Data Flash - title line */
+    format_size(data_size, size_str, sizeof(size_str));
+    snprintf(content,
+        sizeof(content),
+        " DATA FLASH   %8s   0x%08X - 0x%08X",
+        size_str,
+        data_sad,
+        data_ead);
+    status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+
+    /* Data Flash - TrustZone indicator (if applicable) */
+    if (have_boundary && bnd.dfs > 0) {
+      uint16_t data_kb = data_size / 1024;
+      int sec_chars = (bnd.dfs > 0) ? (int)((uint64_t)bnd.dfs * 40 / data_kb) : 0;
+      if (sec_chars > 40)
+        sec_chars = 40;
+      int ns_chars = 40 - sec_chars;
+
+      bar_buf[0] = '\0';
+      strcat(bar_buf, " ");
+      for (int i = 0; i < sec_chars; i++)
+        strcat(bar_buf, TZ_SECURE);
+      for (int i = 0; i < ns_chars; i++)
+        strcat(bar_buf, TZ_NONSEC);
+
+      snprintf(content, sizeof(content), "%s  TZ: S=%uKB", bar_buf, bnd.dfs);
+      status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+      status_print_line(line, STATUS_WIDTH);
+    }
+
+    /* Data Flash - usage bar */
+    pct = (data_size > 0) ? (int)((uint64_t)data_used * 100 / data_size) : 0;
+    int df_filled = (data_size > 0) ? (int)((uint64_t)data_used * 40 / data_size) : 0;
+    if (df_filled > 40)
+      df_filled = 40;
+    bar_buf[0] = '\0';
+    strcat(bar_buf, " ");
+    for (int i = 0; i < df_filled; i++)
+      strcat(bar_buf, BAR_FULL);
+    for (int i = df_filled; i < 40; i++)
+      strcat(bar_buf, BAR_EMPTY);
+    snprintf(content, sizeof(content), "%s  %3d%% used", bar_buf, pct);
+    status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+  }
+
+  /* Config Area */
+  if (config_size > 0) {
+    /* Separator */
+    snprintf(line, sizeof(line), "%s%s%s", BOX_LT2, INNER_DASHES, BOX_RT2);
+    status_print_line(line, STATUS_WIDTH);
+
+    /* Config - title line */
+    if (config_size >= 1024)
+      snprintf(size_str, sizeof(size_str), "%u KB", config_size / 1024);
+    else
+      snprintf(size_str, sizeof(size_str), "%u B", config_size);
+    snprintf(content,
+        sizeof(content),
+        " CONFIG AREA  %8s   0x%08X - 0x%08X",
+        size_str,
+        cfg_sad,
+        cfg_ead);
+    status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+  }
+
+  /* Bottom border */
+  snprintf(line, sizeof(line), "%s%s%s", BOX_BL2, INNER_DASHES, BOX_BR2);
+  status_print_line(line, STATUS_WIDTH);
+
+  status_print_line("", STATUS_WIDTH);
+
+  /* Memory Summary Bar */
+  uint32_t total_mem = code_size + data_size + config_size;
+  int code_bar = (total_mem > 0) ? (int)((uint64_t)code_size * 20 / total_mem) : 0;
+  int data_bar = (total_mem > 0) ? (int)((uint64_t)data_size * 20 / total_mem) : 0;
+  int cfg_bar = (total_mem > 0) ? (int)((uint64_t)config_size * 20 / total_mem) : 0;
+  if (code_bar < 1 && code_size > 0)
+    code_bar = 1;
+  if (data_bar < 1 && data_size > 0)
+    data_bar = 1;
+  if (cfg_bar < 1 && config_size > 0)
+    cfg_bar = 1;
+
+  bar_buf[0] = '\0';
+  strcat(bar_buf, "Memory: [CODE ");
+  for (int i = 0; i < code_bar; i++)
+    strcat(bar_buf, BAR_FULL);
+  strcat(bar_buf, "] [DATA ");
+  for (int i = 0; i < data_bar; i++)
+    strcat(bar_buf, BAR_FULL);
+  strcat(bar_buf, "] [CFG ");
+  for (int i = 0; i < cfg_bar; i++)
+    strcat(bar_buf, BAR_FULL);
+  strcat(bar_buf, "]");
+  status_print_line(bar_buf, STATUS_WIDTH);
+
+  status_print_line("", STATUS_WIDTH);
+
+  /* Legend for bar symbols */
+  snprintf(content,
+      sizeof(content),
+      "Legend: %s=used %s=empty  %s=BPS prot  %s=PBPS perm  S=Secure N=NSC",
+      BAR_FULL,
+      BAR_EMPTY,
+      BAR_PROT_FULL,
+      BAR_PERM_FULL);
+  status_print_line(content, STATUS_WIDTH);
+
+  /* FSPR status indicator */
+  if (cfg_area >= 0) {
+    snprintf(content,
+        sizeof(content),
+        "        FSPR: %s",
+        fspr_locked ? "LOCKED (BPS registers write-protected)"
+                    : "UNLOCKED (BPS registers can be modified)");
+    status_print_line(content, STATUS_WIDTH);
+  }
+
+  status_print_line("", STATUS_WIDTH);
+
+  /* Security Summary / Warning */
+  int bps_protected = status_count_protected_blocks(bps, CFG_BPS_LEN);
+  int pbps_protected = status_count_protected_blocks(pbps, CFG_BPS_LEN);
+  bool has_tz = have_boundary && (bnd.cfs1 > 0 || bnd.cfs2 > 0 || bnd.dfs > 0);
+  bool has_dlm_keys = (key_secdbg == 1 || key_nonsecdbg == 1 || key_rma == 1);
+  bool is_ssd = (have_dlm && dlm_state == 0x02);
+  bool init_enabled = (have_param && init_param == PARAM_INIT_ENABLED);
+
+  /* Count security issues */
+  int warnings = 0;
+  if (bps_protected == 0)
+    warnings++;
+  if (pbps_protected == 0)
+    warnings++;
+  if (!has_tz)
+    warnings++;
+  if (!fspr_locked)
+    warnings++;
+  if (is_ssd)
+    warnings++;
+  if (init_enabled)
+    warnings++;
+  if (!has_dlm_keys)
+    warnings++;
+
+  if (warnings >= 5) {
+    /* Major security warning */
+    status_print_line("\xe2\x9a\xa0  SECURITY WARNING: Device is NOT secured!", STATUS_WIDTH);
+    status_print_line("", STATUS_WIDTH);
+
+    if (bps_protected == 0 && pbps_protected == 0)
+      status_print_line(
+          "  \xe2\x9c\x97 No block protection: All flash blocks can be erased/written",
+          STATUS_WIDTH);
+    if (!fspr_locked)
+      status_print_line(
+          "  \xe2\x9c\x97 FSPR unlocked: Block protection settings can be modified", STATUS_WIDTH);
+    if (!has_tz)
+      status_print_line("  \xe2\x9c\x97 No TrustZone: All memory is Non-Secure", STATUS_WIDTH);
+    if (is_ssd)
+      status_print_line(
+          "  \xe2\x9c\x97 DLM in SSD: Full debug and serial access enabled", STATUS_WIDTH);
+    if (init_enabled)
+      status_print_line(
+          "  \xe2\x9c\x97 Init enabled: Device can be factory reset by anyone", STATUS_WIDTH);
+    if (!has_dlm_keys)
+      status_print_line(
+          "  \xe2\x9c\x97 No DLM keys: Cannot use authenticated state regression", STATUS_WIDTH);
+
+    status_print_line("", STATUS_WIDTH);
+  } else if (warnings > 0) {
+    /* Partial security */
+    status_print_line("Security Notes:", STATUS_WIDTH);
+    if (bps_protected == 0 && pbps_protected == 0)
+      status_print_line("  - No block protection configured", STATUS_WIDTH);
+    if (!fspr_locked)
+      status_print_line("  - FSPR unlocked (BPS can be modified)", STATUS_WIDTH);
+    if (!has_tz)
+      status_print_line("  - TrustZone not configured", STATUS_WIDTH);
+    if (init_enabled)
+      status_print_line("  - Initialize command enabled", STATUS_WIDTH);
+    status_print_line("", STATUS_WIDTH);
+  } else {
+    status_print_line("\xe2\x9c\x93 Device security configured", STATUS_WIDTH);
+    status_print_line("", STATUS_WIDTH);
+  }
+
+  status_print_hline(BOX_LT, BOX_H, BOX_RT, STATUS_WIDTH);
+  status_print_centered("SECURITY STATUS", STATUS_WIDTH);
+  status_print_hline(BOX_LT, BOX_H, BOX_RT, STATUS_WIDTH);
+
+  /* DLM State */
+  if (have_dlm) {
+    snprintf(line, sizeof(line), "DLM State: %s (0x%02X)", ra_dlm_state_name(dlm_state), dlm_state);
+    status_print_line(line, STATUS_WIDTH);
+  } else {
+    status_print_line("DLM State: N/A (not supported on this device)", STATUS_WIDTH);
+  }
+
+  /* OSIS Status */
+  snprintf(line,
+      sizeof(line),
+      "OSIS:      %s",
+      dev->authenticated ? "Locked (authenticated)" : "Unlocked (no ID protection)");
+  status_print_line(line, STATUS_WIDTH);
+
+  /* Init Command - always show */
+  if (have_param) {
+    snprintf(line,
+        sizeof(line),
+        "Init Cmd:  %s",
+        init_param == PARAM_INIT_ENABLED ? "Enabled" : "Disabled");
+  } else {
+    snprintf(line, sizeof(line), "Init Cmd:  N/A");
+  }
+  status_print_line(line, STATUS_WIDTH);
+
+  status_print_line("", STATUS_WIDTH);
+
+  /* TrustZone Boundaries - always show */
+  status_print_line("TrustZone Boundaries:", STATUS_WIDTH);
+  if (have_boundary) {
+    uint16_t cfs_ns = (code_size / 1024) - bnd.cfs2;
+    uint16_t dfs_ns = (data_size / 1024) - bnd.dfs;
+    uint16_t cfs_nsc = bnd.cfs2 - bnd.cfs1;
+    uint16_t srs_nsc = bnd.srs2 - bnd.srs1;
+
+    status_print_line(BOX_TL2 "────────────────" BOX_TT "─────────" BOX_TT "─────────" BOX_TT
+                              "─────────────" BOX_TR2,
+        STATUS_WIDTH);
+    status_print_line(BOX_V2 " Region         " BOX_V2 " Secure  " BOX_V2 "   NSC   " BOX_V2
+                             " Non-Secure  " BOX_V2,
+        STATUS_WIDTH);
+    status_print_line(BOX_LT2 "────────────────" BOX_CROSS "─────────" BOX_CROSS
+                              "─────────" BOX_CROSS "─────────────" BOX_RT2,
+        STATUS_WIDTH);
+
+    snprintf(line,
+        sizeof(line),
+        BOX_V2 " Code Flash     " BOX_V2 " %4u KB " BOX_V2 " %4u KB " BOX_V2 "   %5u KB  " BOX_V2,
+        bnd.cfs1,
+        cfs_nsc,
+        cfs_ns);
+    status_print_line(line, STATUS_WIDTH);
+
+    snprintf(line,
+        sizeof(line),
+        BOX_V2 " Data Flash     " BOX_V2 " %4u KB " BOX_V2 "    -    " BOX_V2 "   %5u KB  " BOX_V2,
+        bnd.dfs,
+        dfs_ns);
+    status_print_line(line, STATUS_WIDTH);
+
+    snprintf(line,
+        sizeof(line),
+        BOX_V2 " SRAM           " BOX_V2 " %4u KB " BOX_V2 " %4u KB " BOX_V2 "      -      " BOX_V2,
+        bnd.srs1,
+        srs_nsc);
+    status_print_line(line, STATUS_WIDTH);
+
+    status_print_line(BOX_BL2 "────────────────" BOX_TB "─────────" BOX_TB "─────────" BOX_TB
+                              "─────────────" BOX_BR2,
+        STATUS_WIDTH);
+  } else {
+    status_print_line("  N/A (not supported on this device)", STATUS_WIDTH);
+  }
+
+  status_print_line("", STATUS_WIDTH);
+
+  /* DLM Keys - always show */
+  status_print_line("DLM Keys:", STATUS_WIDTH);
+  snprintf(line,
+      sizeof(line),
+      "  SECDBG: [%s] %-10s  NONSECDBG: [%s] %-10s  RMA: [%s] %s",
+      key_secdbg == 1 ? CHECK_MARK : " ",
+      key_secdbg == 1 ? "Installed" : (key_secdbg == 0 ? "Empty" : "N/A"),
+      key_nonsecdbg == 1 ? CHECK_MARK : " ",
+      key_nonsecdbg == 1 ? "Installed" : (key_nonsecdbg == 0 ? "Empty" : "N/A"),
+      key_rma == 1 ? CHECK_MARK : " ",
+      key_rma == 1 ? "Installed" : (key_rma == 0 ? "Empty" : "N/A"));
+  status_print_line(line, STATUS_WIDTH);
+  status_print_line("", STATUS_WIDTH);
+
+  /* Block Protection - always show */
+  status_print_line("Block Protection (BPS):", STATUS_WIDTH);
+  if (cfg_area >= 0) {
+    int bps_protected = status_count_protected_blocks(bps, CFG_BPS_LEN);
+    int pbps_protected = status_count_protected_blocks(pbps, CFG_BPS_LEN);
+    int total_blocks = CFG_BPS_LEN * 8;
+
+    /* Build block visualization */
+    bar_buf[0] = '\0';
+    strcat(bar_buf, "  Blocks: [");
+    for (int i = 0; i < 16; i++) {
+      bool prot = (bps[i] != 0xFF);
+      strcat(bar_buf, prot ? BAR_FULL : BAR_EMPTY);
+    }
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "] %d/%d protected", bps_protected, total_blocks);
+    strcat(bar_buf, tmp);
+    status_print_line(bar_buf, STATUS_WIDTH);
+
+    snprintf(line, sizeof(line), "  PBPS:   %d blocks permanently protected", pbps_protected);
+    status_print_line(line, STATUS_WIDTH);
+
+    snprintf(line,
+        sizeof(line),
+        "  FSPR:   %s",
+        fspr_locked ? "0 (locked - startup area protected)" : "1 (unlocked)");
+    status_print_line(line, STATUS_WIDTH);
+  } else {
+    status_print_line("  N/A (config area not readable)", STATUS_WIDTH);
+  }
+  status_print_line("", STATUS_WIDTH);
+
+  status_print_hline(BOX_BL, BOX_H, BOX_BR, STATUS_WIDTH);
+  printf("\n");
+
+  return 0;
+}
+
+/*
  * Known command names for protocol analysis
  */
 static const char *

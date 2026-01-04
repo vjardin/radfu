@@ -132,3 +132,69 @@ communication with the host. The device typically appears as /dev/ttyACM0.
 4. Monitor application console:
    - Connect USB-UART adapter to P410/P411
    - screen /dev/ttyUSB0 115200
+
+## Device Status
+
+The `radfu status` command provides a comprehensive overview of the device:
+
+```
+$ radfu status
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                            RADFU DEVICE STATUS                             ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║  MCU: R7FA4M2AD3CFP     Group: GrpA/GrpB   Core: Cortex-M33                ║
+║  Boot FW: v1.6.25      Max Baud: 6.0 Mbps    Mode: Linear                  ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                               MEMORY LAYOUT                                ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                                                                            ║
+║  ┌──────────────────────────────────────────────────────────────────────┐  ║
+║  │ CODE FLASH     512 KB   0x00000000 - 0x0007FFFF                      │  ║
+║  │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    0% used                  │  ║
+║  ├──────────────────────────────────────────────────────────────────────┤  ║
+║  │ DATA FLASH       8 KB   0x08000000 - 0x08001FFF                      │  ║
+║  │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    0% used                  │  ║
+║  ├──────────────────────────────────────────────────────────────────────┤  ║
+║  │ CONFIG AREA     512 B   0x0100A100 - 0x0100A2FF                      │  ║
+║  └──────────────────────────────────────────────────────────────────────┘  ║
+║                                                                            ║
+║  Memory: [CODE ███████████████████] [DATA █] [CFG █]                       ║
+║                                                                            ║
+║  Legend: █=used ░=empty  ▓=BPS prot  ◆=PBPS perm  S=Secure N=NSC           ║
+║          FSPR: UNLOCKED (BPS registers can be modified)                    ║
+║                                                                            ║
+║  ⚠  SECURITY WARNING: Device is NOT secured!                               ║
+║                                                                            ║
+║    ✗ No block protection: All flash blocks can be erased/written           ║
+║    ✗ FSPR unlocked: Block protection settings can be modified              ║
+║    ✗ No TrustZone: All memory is Non-Secure                                ║
+║    ✗ DLM in SSD: Full debug and serial access enabled                      ║
+║    ✗ No DLM keys: Cannot use authenticated state regression                ║
+║                                                                            ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║                              SECURITY STATUS                               ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║  DLM State: SSD (0x02)                                                     ║
+║  OSIS:      Unlocked (no ID protection)                                    ║
+║  Init Cmd:  Disabled                                                       ║
+║                                                                            ║
+║  TrustZone Boundaries:                                                     ║
+║  ┌────────────────┬─────────┬─────────┬─────────────┐                      ║
+║  │ Region         │ Secure  │   NSC   │ Non-Secure  │                      ║
+║  ├────────────────┼─────────┼─────────┼─────────────┤                      ║
+║  │ Code Flash     │    0 KB │    0 KB │     512 KB  │                      ║
+║  │ Data Flash     │    0 KB │    -    │       8 KB  │                      ║
+║  │ SRAM           │    0 KB │    0 KB │      -      │                      ║
+║  └────────────────┴─────────┴─────────┴─────────────┘                      ║
+║                                                                            ║
+║  DLM Keys:                                                                 ║
+║    SECDBG: [ ] N/A         NONSECDBG: [ ] N/A         RMA: [ ] N/A         ║
+║                                                                            ║
+║  Block Protection (BPS):                                                   ║
+║    Blocks: [░░░░░░░░░░░░░░░░] 0/144 protected                              ║
+║    PBPS:   0 blocks permanently protected                                  ║
+║    FSPR:   1 (unlocked)                                                    ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```

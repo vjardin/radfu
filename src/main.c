@@ -30,6 +30,7 @@ usage(int status) {
       "Usage: radfu <command> [options] [file]\n"
       "\n"
       "Commands:\n"
+      "  status         Show comprehensive device status with ASCII diagram\n"
       "  info           Show device and memory information\n"
       "  read <file>    Read flash memory to file\n"
       "  write <file>[:<addr>] ...  Write file(s) to flash memory\n"
@@ -183,6 +184,7 @@ parse_id_code(const char *str, uint8_t *id_code) {
 
 enum command {
   CMD_NONE,
+  CMD_STATUS,
   CMD_INFO,
   CMD_READ,
   CMD_WRITE,
@@ -591,7 +593,9 @@ main(int argc, char *argv[]) {
 
   const char *command = argv[optind++];
 
-  if (strcmp(command, "info") == 0) {
+  if (strcmp(command, "status") == 0) {
+    cmd = CMD_STATUS;
+  } else if (strcmp(command, "info") == 0) {
     cmd = CMD_INFO;
   } else if (strcmp(command, "read") == 0) {
     cmd = CMD_READ;
@@ -839,6 +843,9 @@ main(int argc, char *argv[]) {
 
   int ret = 0;
   switch (cmd) {
+  case CMD_STATUS:
+    ret = ra_status(&dev);
+    break;
   case CMD_INFO:
     ret = ra_get_dev_info(&dev);
     if (ret == 0) {

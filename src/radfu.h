@@ -27,6 +27,13 @@ int ra_get_area_info(ra_device_t *dev, bool print);
 int ra_get_dev_info(ra_device_t *dev);
 
 /*
+ * Display comprehensive device status with ASCII diagram
+ * Shows: MCU info, memory layout, flash usage, security settings
+ * Returns: 0 on success, -1 on error
+ */
+int ra_status(ra_device_t *dev);
+
+/*
  * Query recommended maximum UART baudrate (RMB) from device signature
  * rmb_out: pointer to store the RMB value in bps
  * Returns: 0 on success, -1 on error
