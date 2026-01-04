@@ -73,13 +73,21 @@ by default from extension). Supported formats: binary (.bin), Intel HEX (.hex),
 and Motorola S-record (.srec, .s19, .s37).
 
 .TP
-.B write <file>
-Write a firmware file to flash memory. The flash area is automatically erased
-before writing. Supports binary, Intel HEX, and Motorola S-record formats.
-Use \fB-f\fR to specify the format (auto-detected by default from extension).
-Use \fB-a\fR to specify the start address (if omitted and the file contains
-address information, the embedded address is used). Use \fB-v\fR to verify
-the written data matches the file.
+.B write <file>[:<addr>] [<file>:<addr>] ...
+Write one or more firmware files to flash memory. The flash area is automatically
+erased before writing. Supports binary, Intel HEX, and Motorola S-record formats.
+
+For single file mode, use \fB-a\fR to specify the start address (if omitted
+and the file contains address information, the embedded address is used).
+
+For multi-file mode, append the address after a colon (e.g., app.bin:0x10000).
+Files without an address use the embedded address (for HEX/S-record) or 0x0.
+Use \fB-f\fR to specify the input format and \fB-v\fR to verify after writing.
+
+.nf
+    radfu write boot.bin:0x0 app.bin:0x10000 data.bin:0x08000000
+    radfu write -v firmware.hex config.bin:0x08000000
+.fi
 
 .TP
 .B verify <file>

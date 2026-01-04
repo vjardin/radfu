@@ -31,7 +31,7 @@ usage(int status) {
       "Commands:\n"
       "  info           Show device and memory information\n"
       "  read <file>    Read flash memory to file\n"
-      "  write <file>   Write file to flash memory\n"
+      "  write <file>[:<addr>] ...  Write file(s) to flash memory\n"
       "  verify <file>  Verify flash memory against file\n"
       "  erase          Erase flash sectors\n"
       "  blank-check    Check if flash region is erased (all 0xFF)\n"
@@ -97,6 +97,52 @@ parse_hex(const char *str) {
 }
 
 #define ID_CODE_LEN 16
+
+/* Maximum number of files for multi-file write */
+#define MAX_WRITE_FILES 16
+
+/* Entry for multi-file write: file path and optional address */
+typedef struct {
+  const char *path;
+  uint32_t address;
+  bool has_address;
+} write_entry_t;
+
+/*
+ * Parse file:address format
+ * Format: filename or filename:0xADDRESS
+ * Returns 0 on success, -1 on error
+ */
+static int
+parse_write_entry(const char *arg, write_entry_t *entry) {
+  /* Find last colon that could be an address separator */
+  const char *colon = strrchr(arg, ':');
+
+  /* Check if this looks like an address (hex number after colon) */
+  if (colon != NULL && colon[1] != '\0') {
+    char *endptr;
+    unsigned long val = strtoul(colon + 1, &endptr, 16);
+    if (*endptr == '\0') {
+      /* Valid hex address found */
+      size_t path_len = (size_t)(colon - arg);
+      char *path = malloc(path_len + 1);
+      if (!path)
+        return -1;
+      memcpy(path, arg, path_len);
+      path[path_len] = '\0';
+      entry->path = path;
+      entry->address = (uint32_t)val;
+      entry->has_address = true;
+      return 0;
+    }
+  }
+
+  /* No address, use entire string as path */
+  entry->path = arg;
+  entry->address = 0;
+  entry->has_address = false;
+  return 0;
+}
 
 /* Magic ID code for total area erasure: "ALeRASE" + 0xFF padding */
 static const uint8_t ALERASE_ID[ID_CODE_LEN] = {
@@ -317,6 +363,8 @@ main(int argc, char *argv[]) {
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
   int8_t area_koa = -1; /* -1 = not set, 0/1/2 = code/data/config */
+  write_entry_t write_entries[MAX_WRITE_FILES];
+  int write_count = 0;
   enum command cmd = CMD_NONE;
   int opt;
 
@@ -447,8 +495,22 @@ main(int argc, char *argv[]) {
   } else if (strcmp(command, "write") == 0) {
     cmd = CMD_WRITE;
     if (optind >= argc)
-      errx(EXIT_FAILURE, "write command requires a file argument");
-    file = argv[optind];
+      errx(EXIT_FAILURE, "write command requires at least one file argument");
+    /* Parse all remaining arguments as file:address pairs */
+    while (optind < argc && write_count < MAX_WRITE_FILES) {
+      if (parse_write_entry(argv[optind], &write_entries[write_count]) < 0)
+        errx(EXIT_FAILURE, "failed to parse file argument: %s", argv[optind]);
+      write_count++;
+      optind++;
+    }
+    if (write_count == 0)
+      errx(EXIT_FAILURE, "write command requires at least one file argument");
+    /* For single file, also set file/address for backward compatibility */
+    if (write_count == 1) {
+      file = write_entries[0].path;
+      if (write_entries[0].has_address && address == 0)
+        address = write_entries[0].address;
+    }
   } else if (strcmp(command, "verify") == 0) {
     cmd = CMD_VERIFY;
     if (optind >= argc)
@@ -647,7 +709,23 @@ main(int argc, char *argv[]) {
     ret = ra_read(&dev, file, address, size, output_format);
     break;
   case CMD_WRITE:
-    ret = ra_write(&dev, file, address, size, verify, input_format);
+    if (write_count == 1) {
+      /* Single file mode - use file/address variables (may include --area) */
+      ret = ra_write(&dev, file, address, size, verify, input_format);
+    } else {
+      /* Multi-file mode - write each file sequentially */
+      for (int i = 0; i < write_count; i++) {
+        uint32_t addr = write_entries[i].has_address ? write_entries[i].address : 0;
+        printf("Writing %s to 0x%08X...\n", write_entries[i].path, addr);
+        ret = ra_write(&dev, write_entries[i].path, addr, 0, verify, input_format);
+        if (ret < 0) {
+          warnx("failed to write %s", write_entries[i].path);
+          break;
+        }
+      }
+      if (ret == 0)
+        printf("All %d files programmed successfully.\n", write_count);
+    }
     break;
   case CMD_VERIFY:
     ret = ra_verify(&dev, file, address, size, input_format);
