@@ -127,22 +127,20 @@ test_get_area_type_koa(void **state) {
 
   /* KOA format: 0xTN where T=type, N=area index */
 
-  /* Type 0: User/Code */
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x00), "User/Code");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x01), "User/Code");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE << 4 | 0x0F), "User/Code");
+  /* KOA 0x00: User/Code bank 0 */
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE), "User/Code");
 
-  /* Type 1: Data */
-  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x00), "Data");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x01), "Data");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA << 4 | 0x0F), "Data");
+  /* KOA 0x01: User/Code bank 1 (dual bank mode) */
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CODE1), "User/Code");
 
-  /* Type 2: Config */
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x00), "Config");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x01), "Config");
-  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG << 4 | 0x0F), "Config");
+  /* KOA 0x10: Data flash */
+  assert_string_equal(get_area_type_koa(KOA_TYPE_DATA), "Data");
+
+  /* KOA 0x20: Config area */
+  assert_string_equal(get_area_type_koa(KOA_TYPE_CONFIG), "Config");
 
   /* Unknown types */
+  assert_string_equal(get_area_type_koa(0x02), "Unknown");
   assert_string_equal(get_area_type_koa(0x30), "Unknown");
   assert_string_equal(get_area_type_koa(0xFF), "Unknown");
 }

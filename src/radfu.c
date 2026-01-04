@@ -328,9 +328,9 @@ get_area_type(uint32_t sad) {
  */
 STATIC const char *
 get_area_type_koa(uint8_t koa) {
-  uint8_t type = (koa >> 4) & 0x0F;
-  switch (type) {
+  switch (koa) {
   case KOA_TYPE_CODE:
+  case KOA_TYPE_CODE1:
     return "User/Code";
   case KOA_TYPE_DATA:
     return "Data";
@@ -406,8 +406,8 @@ format_size(uint32_t bytes, char *buf, size_t buflen) {
 static int
 query_noa(ra_device_t *dev) {
   uint8_t pkt[MAX_PKT_LEN];
-  uint8_t resp[16];
-  uint8_t data[16];
+  uint8_t resp[64]; /* Signature response can be up to 47 bytes */
+  uint8_t data[64];
   size_t data_len;
   ssize_t pkt_len, n;
 
@@ -499,7 +499,7 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     dev->chip_layout[i].cau = cau;
 
     /* Count user areas for dual bank detection (KOA=0x00 or 0x01) */
-    if (koa == KOA_TYPE_CODE || koa == 0x01)
+    if (koa == KOA_TYPE_CODE || koa == KOA_TYPE_CODE1)
       user_area_count++;
 
     /* Calculate sizes by area type */
@@ -530,7 +530,7 @@ ra_get_area_info(ra_device_t *dev, bool print) {
       /* Use KOA for area type (spec 6.16.2.2), fallback to address-based */
       const char *area_type = (koa != 0) ? get_area_type_koa(koa) : get_area_type(sad);
       /* Add bank label for dual bank mode user areas */
-      if (koa == 0x01) {
+      if (koa == KOA_TYPE_CODE1) {
         printf("Area %d [%s Bank 1] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
       } else if (user_area_count > 1 && koa == KOA_TYPE_CODE) {
         printf("Area %d [%s Bank 0] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
@@ -2330,6 +2330,10 @@ ra_config_read(ra_device_t *dev) {
   uint8_t data[8];
   uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
+
+  /* Ensure chip layout is populated */
+  if (ra_get_area_info(dev, false) < 0)
+    return -1;
 
   /* Find config area */
   int area = find_config_area(dev);

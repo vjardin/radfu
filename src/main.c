@@ -749,9 +749,9 @@ main(int argc, char *argv[]) {
       ra_close(&dev);
       errx(EXIT_FAILURE, "device is not in dual bank mode (NOA=%d)", dev.noa);
     }
-    if (area_koa >= 0 && area_koa != KOA_TYPE_CODE && area_koa != 0x01)
+    if (area_koa >= 0 && area_koa != KOA_TYPE_CODE && area_koa != KOA_TYPE_CODE1)
       warnx("--bank overrides --area for user area selection");
-    area_koa = bank; /* 0 = KOA_TYPE_CODE (0x00), 1 = 0x01 */
+    area_koa = bank; /* 0 = KOA_TYPE_CODE (0x00), 1 = KOA_TYPE_CODE1 (0x01) */
   }
 
   /* Resolve --area to address/size if specified */

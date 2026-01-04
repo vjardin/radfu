@@ -130,9 +130,10 @@ const char *ra_dlm_state_name(uint8_t code);
 #define TYP_GRP_D 0x05  /* GrpD: RA4E2, RA6E2, RA4T1, RA6T3 */
 
 /* Kind of Area (KOA) type codes per spec 6.16.2.2 */
-#define KOA_TYPE_CODE 0x0   /* User/Code flash area */
-#define KOA_TYPE_DATA 0x1   /* Data flash area */
-#define KOA_TYPE_CONFIG 0x2 /* Config area */
+#define KOA_TYPE_CODE 0x00   /* User/Code flash area (bank 0) */
+#define KOA_TYPE_CODE1 0x01  /* User/Code flash area (bank 1, dual bank mode) */
+#define KOA_TYPE_DATA 0x10   /* Data flash area */
+#define KOA_TYPE_CONFIG 0x20 /* Config area */
 
 /* Memory address range boundaries for area type detection */
 #define ADDR_CODE_FLASH_END 0x00100000   /* Code flash: 0x00000000 - 0x000FFFFF */
