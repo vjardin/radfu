@@ -446,6 +446,7 @@ main(int argc, char *argv[]) {
   bool bnd_srs1_set = false, bnd_srs2_set = false;
   const char *boundary_file = NULL;
   int8_t area_koa = -1; /* -1 = not set, 0/1/2 = code/data/config */
+  bool addr_explicit = false, size_explicit = false;
   write_entry_t write_entries[MAX_WRITE_FILES];
   int write_count = 0;
   enum command cmd = CMD_NONE;
@@ -458,9 +459,11 @@ main(int argc, char *argv[]) {
       break;
     case 'a':
       address = parse_hex(optarg);
+      addr_explicit = true;
       break;
     case 's':
       size = parse_hex(optarg);
+      size_explicit = true;
       break;
     case 'b':
       baudrate = (uint32_t)strtoul(optarg, NULL, 10);
@@ -734,11 +737,19 @@ main(int argc, char *argv[]) {
       ra_close(&dev);
       errx(EXIT_FAILURE, "area not found");
     }
-    /* --area sets defaults, -a/-s can still override */
-    if (address == 0)
+    /* Config area CRC requires exact boundaries per spec 6.21 */
+    if (cmd == CMD_CRC && area_koa == KOA_TYPE_CONFIG) {
+      if (addr_explicit || size_explicit)
+        warnx("config area CRC requires exact boundaries, -a/-s ignored");
       address = area_sad;
-    if (size == 0)
       size = area_ead - area_sad + 1;
+    } else {
+      /* --area sets defaults, -a/-s can still override */
+      if (address == 0)
+        address = area_sad;
+      if (size == 0)
+        size = area_ead - area_sad + 1;
+    }
   }
 
   /* Note: IDA with all-0xFF fails with 0xC1 on unlocked devices

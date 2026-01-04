@@ -342,19 +342,47 @@ get_area_type_koa(uint8_t koa) {
 }
 
 /*
- * Get device group name from TYP field per spec 6.15.2.2
+ * Print device group info from TYP field per spec 6.15.2.2
  */
-STATIC const char *
-get_device_group(uint8_t typ) {
+STATIC void
+print_device_group(uint8_t typ) {
+  const char *name;
+  const char *devices;
   switch (typ) {
   case TYP_GRP_AB:
-    return "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)";
+    name = "GrpA/GrpB";
+    devices = "RA4M2/3, RA6M4/5, RA4E1, RA6E1";
+    break;
   case TYP_GRP_C:
-    return "GrpC (RA6T2)";
+    name = "GrpC";
+    devices = "RA6T2";
+    break;
   case TYP_GRP_D:
-    return "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)";
+    name = "GrpD";
+    devices = "RA4E2, RA6E2, RA4T1, RA6T3";
+    break;
   default:
-    return "Unknown";
+    printf("Device Group:       Unknown (TYP=0x%02X)\n", typ);
+    return;
+  }
+  printf("Device Group:       %s (TYP=0x%02X)\n", name, typ);
+  printf("  Devices:          %s\n", devices);
+}
+
+/*
+ * Print NOA (Number of Areas) with mode interpretation
+ * Standard: 4 areas (User, Data, Config, + reserved)
+ * Dual bank: 5+ areas (User0, User1, Data, Config, etc.)
+ */
+STATIC void
+print_noa_info(uint8_t noa) {
+  printf("Number of Areas:    %d", noa);
+  if (noa == 4) {
+    printf(" (linear mode)\n");
+  } else if (noa > 4) {
+    printf(" (dual bank mode)\n");
+  } else {
+    printf("\n");
   }
 }
 
@@ -526,7 +554,7 @@ ra_get_dev_info(ra_device_t *dev) {
     uint8_t bfv_minor = data[7];
     uint8_t bfv_build = data[8];
 
-    printf("Device Group:       %s\n", get_device_group(typ));
+    print_device_group(typ);
     printf("Boot Firmware:      v%d.%d.%d\n", bfv_major, bfv_minor, bfv_build);
     if (rmb >= 1000000)
       printf("Max UART Baudrate:  %u bps (%.1f Mbps)\n", rmb, rmb / 1000000.0);
@@ -534,7 +562,7 @@ ra_get_dev_info(ra_device_t *dev) {
       printf("Max UART Baudrate:  %u bps (%.1f Kbps)\n", rmb, rmb / 1000.0);
     else
       printf("Max UART Baudrate:  %u bps\n", rmb);
-    printf("Number of Areas:    %d\n", noa);
+    print_noa_info(noa);
 
     /* Parse Device ID if available (16 bytes starting at offset 9) */
     if (data_len >= 25) {

@@ -148,25 +148,6 @@ test_get_area_type_koa(void **state) {
 }
 
 /*
- * Device group tests
- */
-
-static void
-test_get_device_group(void **state) {
-  (void)state;
-
-  /* Test known device groups per spec 6.15.2.2 */
-  assert_string_equal(get_device_group(TYP_GRP_AB), "GrpA/GrpB (RA4M2/3, RA6M4/5, RA4E1, RA6E1)");
-  assert_string_equal(get_device_group(TYP_GRP_C), "GrpC (RA6T2)");
-  assert_string_equal(get_device_group(TYP_GRP_D), "GrpD (RA4E2, RA6E2, RA4T1, RA6T3)");
-
-  /* Unknown types */
-  assert_string_equal(get_device_group(0x00), "Unknown");
-  assert_string_equal(get_device_group(0x03), "Unknown");
-  assert_string_equal(get_device_group(0xFF), "Unknown");
-}
-
-/*
  * Area lookup tests
  */
 
@@ -423,9 +404,6 @@ main(void) {
     /* Area type tests */
     cmocka_unit_test(test_get_area_type),
     cmocka_unit_test(test_get_area_type_koa),
-
-    /* Device group tests */
-    cmocka_unit_test(test_get_device_group),
 
     /* Area lookup tests */
     cmocka_unit_test(test_find_area_for_address),
