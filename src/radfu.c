@@ -1069,7 +1069,6 @@ ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size) {
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t flash_chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
 
@@ -1081,24 +1080,37 @@ ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size) {
   if (set_read_boundaries(dev, start, size, &end) < 0)
     return -1;
 
-  uint32_to_be(start, &data[0]);
-  uint32_to_be(end, &data[4]);
-
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0)
-    return -1;
-
-  if (ra_send(dev, pkt, pkt_len) < 0)
-    return -1;
-
   uint32_t total_size = end - start + 1;
-  uint32_t nr_packets = (end - start) / CHUNK_SIZE;
+
+  /*
+   * WORKAROUND: Use single-packet reads (<=1024 bytes each) to avoid
+   * multi-packet ACK protocol issue. See protocol.md for details.
+   */
+  uint32_t nr_chunks = (total_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
   uint32_t current_addr = start;
   progress_t prog;
-  progress_init(&prog, nr_packets + 1, "Checking");
+  progress_init(&prog, nr_chunks, "Checking");
 
-  for (uint32_t i = 0; i <= nr_packets; i++) {
-    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining = end - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0)
+      return -1;
+
+    if (ra_send(dev, pkt, pkt_len) < 0)
+      return -1;
+
+    /* Receive single data packet */
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7) {
       warnx("short response during blank check (%zd bytes)", n);
       return -1;
@@ -1119,16 +1131,7 @@ ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size) {
       }
     }
 
-    current_addr += (uint32_t)chunk_len;
-
-    /* Send ACK for all packets except the last one (per spec 6.20.3) */
-    if (i < nr_packets) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len < 0)
-        return -1;
-      ra_send(dev, pkt, pkt_len);
-    }
-
+    current_addr += chunk_size;
     progress_update(&prog, i + 1);
   }
 
@@ -2333,7 +2336,6 @@ ra_config_read(ra_device_t *dev) {
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
 
   /* Ensure chip layout is populated */
@@ -2368,26 +2370,39 @@ ra_config_read(ra_device_t *dev) {
 
   /* Set read boundaries */
   dev->sel_area = area;
-  uint32_to_be(sad, &data[0]);
-  uint32_to_be(ead, &data[4]);
 
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0) {
-    free(config);
-    return -1;
-  }
-
-  if (ra_send(dev, pkt, pkt_len) < 0) {
-    free(config);
-    return -1;
-  }
-
-  /* Read config area */
-  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
+  /*
+   * WORKAROUND: Use single-packet reads (<=1024 bytes each) to avoid
+   * multi-packet ACK protocol issue. See protocol.md for details.
+   */
+  uint32_t nr_chunks = (size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  uint32_t current_addr = sad;
   size_t offset = 0;
 
-  for (uint32_t i = 0; i < nr_packets; i++) {
-    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining = ead - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0) {
+      free(config);
+      return -1;
+    }
+
+    if (ra_send(dev, pkt, pkt_len) < 0) {
+      free(config);
+      return -1;
+    }
+
+    /* Receive single data packet */
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7) {
       warnx("short response during config read");
       free(config);
@@ -2402,16 +2417,7 @@ ra_config_read(ra_device_t *dev) {
 
     memcpy(config + offset, chunk, chunk_len);
     offset += chunk_len;
-
-    /* Send ACK except for last packet */
-    if (i < nr_packets - 1) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len < 0) {
-        free(config);
-        return -1;
-      }
-      ra_send(dev, pkt, pkt_len);
-    }
+    current_addr += chunk_size;
   }
 
   /* Analyze config area */
@@ -2975,6 +2981,9 @@ status_query_key_verify(ra_device_t *dev, uint8_t key_type) {
 
 /*
  * Read config area and extract protection info
+ *
+ * WORKAROUND: Uses single-packet reads (<=1024 bytes each) to avoid
+ * multi-packet ACK protocol issue. See protocol.md for details.
  */
 static int
 status_read_config(
@@ -2983,7 +2992,6 @@ status_read_config(
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
 
   uint32_t sad = dev->chip_layout[area].sad;
@@ -2998,25 +3006,34 @@ status_read_config(
   if (!config)
     return -1;
 
-  uint32_to_be(sad, &data[0]);
-  uint32_to_be(ead, &data[4]);
-
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0) {
-    free(config);
-    return -1;
-  }
-
-  if (ra_send(dev, pkt, pkt_len) < 0) {
-    free(config);
-    return -1;
-  }
-
-  uint32_t nr_packets = (size - 1) / CHUNK_SIZE + 1;
+  uint32_t nr_chunks = (size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+  uint32_t current_addr = sad;
   size_t offset = 0;
 
-  for (uint32_t i = 0; i < nr_packets; i++) {
-    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining = ead - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0) {
+      free(config);
+      return -1;
+    }
+
+    if (ra_send(dev, pkt, pkt_len) < 0) {
+      free(config);
+      return -1;
+    }
+
+    /* Receive single data packet */
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7) {
       free(config);
       return -1;
@@ -3031,12 +3048,7 @@ status_read_config(
 
     memcpy(config + offset, chunk, chunk_len);
     offset += chunk_len;
-
-    if (i < nr_packets - 1) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len >= 0)
-        ra_send(dev, pkt, pkt_len);
-    }
+    current_addr += chunk_size;
   }
 
   /* Extract FSPR from SAS register */
