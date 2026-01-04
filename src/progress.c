@@ -6,7 +6,9 @@
  * Minimal terminal progress bar with optional callback for library integration
  */
 
+#ifndef _WIN32
 #define _DEFAULT_SOURCE /* clock_gettime, CLOCK_MONOTONIC */
+#endif
 
 #include "progress.h"
 #include <stdio.h>
@@ -17,15 +19,42 @@
 /* Global quiet mode */
 int progress_global_quiet = 0;
 
-/* Get elapsed time in seconds */
+#ifdef _WIN32
+/* Windows: use QueryPerformanceCounter for high-resolution timing */
+static LARGE_INTEGER perf_freq;
+static int perf_freq_init = 0;
+
+static void
+get_current_time(progress_time_t *t) {
+  QueryPerformanceCounter(t);
+}
+
 static double
-get_elapsed_secs(const struct timespec *start) {
+get_elapsed_secs(const progress_time_t *start) {
+  LARGE_INTEGER now;
+  if (!perf_freq_init) {
+    QueryPerformanceFrequency(&perf_freq);
+    perf_freq_init = 1;
+  }
+  QueryPerformanceCounter(&now);
+  return (double)(now.QuadPart - start->QuadPart) / (double)perf_freq.QuadPart;
+}
+#else
+/* POSIX: use clock_gettime with CLOCK_MONOTONIC */
+static void
+get_current_time(progress_time_t *t) {
+  clock_gettime(CLOCK_MONOTONIC, t);
+}
+
+static double
+get_elapsed_secs(const progress_time_t *start) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
   double secs = (double)(now.tv_sec - start->tv_sec);
   secs += (double)(now.tv_nsec - start->tv_nsec) / 1e9;
   return secs;
 }
+#endif
 
 void
 progress_init(progress_t *p, size_t total, const char *desc) {
@@ -36,7 +65,7 @@ progress_init(progress_t *p, size_t total, const char *desc) {
   p->callback = NULL;
   p->user_data = NULL;
   p->quiet = progress_global_quiet;
-  clock_gettime(CLOCK_MONOTONIC, &p->start_time);
+  get_current_time(&p->start_time);
   progress_update(p, 0);
 }
 

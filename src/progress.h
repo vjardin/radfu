@@ -11,7 +11,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef _WIN32
+#include <windows.h>
+typedef LARGE_INTEGER progress_time_t;
+#else
 #include <time.h>
+typedef struct timespec progress_time_t;
+#endif
 
 /*
  * Progress callback function type
@@ -27,7 +34,7 @@ typedef struct {
   const char *desc;
   progress_cb_t callback;
   void *user_data;
-  struct timespec start_time; /* Start time for speed/ETA calculation */
+  progress_time_t start_time; /* Start time for speed/ETA calculation */
   int quiet;                  /* Suppress output if set */
 } progress_t;
 
