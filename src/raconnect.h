@@ -14,7 +14,7 @@
 #define RENESAS_VID 0x045B
 #define RENESAS_PID 0x0261
 
-#define MAX_AREAS 4
+#define MAX_AREAS 8 /* Support dual bank mode (NOA > 4) */
 #define MAX_TRIES 20
 #define TIMEOUT_MS 100
 
@@ -38,6 +38,7 @@ typedef struct {
   int timeout_ms;
   ra_area_t chip_layout[MAX_AREAS];
   int sel_area;
+  uint8_t noa;        /* Number of areas from signature (0 = not yet queried) */
   bool authenticated; /* True if ID authentication was performed */
   bool uart_mode;     /* True for plain UART (P109/P110), false for USB */
   uint32_t baudrate;  /* Current baud rate (UART mode only) */

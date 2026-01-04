@@ -64,6 +64,7 @@ usage(int status) {
       "  -f, --input-format <fmt>  Input file format (auto/bin/ihex/srec)\n"
       "  -F, --output-format <fmt> Output file format (auto/bin/ihex/srec)\n"
       "      --area <type>    Select memory area (code/data/config or KOA value)\n"
+      "      --bank <n>       Select bank for dual bank mode (0 or 1)\n"
       "  -u, --uart           Use plain UART mode (P109/P110 pins)\n"
       "  -q, --quiet          Suppress progress bar output\n"
       "      --cfs1 <KB>      Code flash secure region size without NSC\n"
@@ -396,6 +397,7 @@ parse_key_type(const char *str) {
 #define OPT_SRS2 260
 #define OPT_AREA 261
 #define OPT_BOUNDARY_FILE 262
+#define OPT_BANK 263
 
 static const struct option longopts[] = {
   { "port",          required_argument, NULL, 'p'               },
@@ -415,6 +417,7 @@ static const struct option longopts[] = {
   { "srs1",          required_argument, NULL, OPT_SRS1          },
   { "srs2",          required_argument, NULL, OPT_SRS2          },
   { "area",          required_argument, NULL, OPT_AREA          },
+  { "bank",          required_argument, NULL, OPT_BANK          },
   { "file",          required_argument, NULL, OPT_BOUNDARY_FILE },
   { "help",          no_argument,       NULL, 'h'               },
   { "version",       no_argument,       NULL, 'V'               },
@@ -446,6 +449,7 @@ main(int argc, char *argv[]) {
   bool bnd_srs1_set = false, bnd_srs2_set = false;
   const char *boundary_file = NULL;
   int8_t area_koa = -1; /* -1 = not set, 0/1/2 = code/data/config */
+  int8_t bank = -1;     /* -1 = not set, 0/1 = bank selection for dual bank mode */
   bool addr_explicit = false, size_explicit = false;
   write_entry_t write_entries[MAX_WRITE_FILES];
   int write_count = 0;
@@ -542,6 +546,14 @@ main(int argc, char *argv[]) {
         area_koa = (int8_t)val;
       }
       break;
+    case OPT_BANK: {
+      char *endptr;
+      long val = strtol(optarg, &endptr, 10);
+      if (*endptr != '\0' || val < 0 || val > 1)
+        errx(EXIT_FAILURE, "invalid bank: %s (use 0 or 1)", optarg);
+      bank = (int8_t)val;
+      break;
+    }
     case OPT_BOUNDARY_FILE:
       boundary_file = optarg;
       break;
@@ -728,6 +740,18 @@ main(int argc, char *argv[]) {
   if (ra_get_area_info(&dev, false) < 0) {
     ra_close(&dev);
     errx(EXIT_FAILURE, "failed to get area info");
+  }
+
+  /* Handle --bank option for dual bank mode */
+  if (bank >= 0) {
+    /* Bank 0 = KOA 0x00 (User area 0), Bank 1 = KOA 0x01 (User area 1) */
+    if (dev.noa <= 4) {
+      ra_close(&dev);
+      errx(EXIT_FAILURE, "device is not in dual bank mode (NOA=%d)", dev.noa);
+    }
+    if (area_koa >= 0 && area_koa != KOA_TYPE_CODE && area_koa != 0x01)
+      warnx("--bank overrides --area for user area selection");
+    area_koa = bank; /* 0 = KOA_TYPE_CODE (0x00), 1 = 0x01 */
   }
 
   /* Resolve --area to address/size if specified */

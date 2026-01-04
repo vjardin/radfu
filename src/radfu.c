@@ -399,6 +399,44 @@ format_size(uint32_t bytes, char *buf, size_t buflen) {
     snprintf(buf, buflen, "%u bytes", bytes);
 }
 
+/*
+ * Query signature to get NOA (Number of Areas) for dual bank detection
+ * Stores NOA in dev->noa for use by ra_get_area_info
+ */
+static int
+query_noa(ra_device_t *dev) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[16];
+  uint8_t data[16];
+  size_t data_len;
+  ssize_t pkt_len, n;
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), SIG_CMD, NULL, 0, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 500);
+  if (n < 7)
+    return -1;
+
+  if (unpack_with_error(resp, n, data, &data_len, "signature") < 0)
+    return -1;
+
+  /* NOA is at offset 4 in signature response */
+  if (data_len >= 5) {
+    dev->noa = data[4];
+    if (dev->noa > MAX_AREAS)
+      dev->noa = MAX_AREAS; /* Cap to array size */
+  } else {
+    dev->noa = 4; /* Default to 4 areas */
+  }
+
+  return 0;
+}
+
 int
 ra_get_area_info(ra_device_t *dev, bool print) {
   uint8_t pkt[MAX_PKT_LEN];
@@ -409,8 +447,18 @@ ra_get_area_info(ra_device_t *dev, bool print) {
   uint32_t code_flash_size = 0;
   uint32_t data_flash_size = 0;
   uint32_t config_size = 0;
+  int user_area_count = 0; /* Count user areas for dual bank detection */
 
-  for (int i = 0; i < MAX_AREAS; i++) {
+  /* Query NOA from signature if not already known */
+  if (dev->noa == 0) {
+    if (query_noa(dev) < 0) {
+      warnx("failed to query number of areas");
+      return -1;
+    }
+  }
+
+  int num_areas = dev->noa > 0 ? dev->noa : 4;
+  for (int i = 0; i < num_areas; i++) {
     uint8_t area = (uint8_t)i;
     pkt_len = ra_pack_pkt(pkt, sizeof(pkt), ARE_CMD, &area, 1, false);
     if (pkt_len < 0)
@@ -450,6 +498,10 @@ ra_get_area_info(ra_device_t *dev, bool print) {
     dev->chip_layout[i].rau = rau;
     dev->chip_layout[i].cau = cau;
 
+    /* Count user areas for dual bank detection (KOA=0x00 or 0x01) */
+    if (koa == KOA_TYPE_CODE || koa == 0x01)
+      user_area_count++;
+
     /* Calculate sizes by area type */
     uint32_t area_size = (ead >= sad) ? (ead - sad + 1) : 0;
     if (sad < ADDR_CODE_FLASH_END)
@@ -477,7 +529,14 @@ ra_get_area_info(ra_device_t *dev, bool print) {
         snprintf(crc_str, sizeof(crc_str), "n/a");
       /* Use KOA for area type (spec 6.16.2.2), fallback to address-based */
       const char *area_type = (koa != 0) ? get_area_type_koa(koa) : get_area_type(sad);
-      printf("Area %d [%s] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
+      /* Add bank label for dual bank mode user areas */
+      if (koa == 0x01) {
+        printf("Area %d [%s Bank 1] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
+      } else if (user_area_count > 1 && koa == KOA_TYPE_CODE) {
+        printf("Area %d [%s Bank 0] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
+      } else {
+        printf("Area %d [%s] (KOA=0x%02X): 0x%08X - 0x%08X\n", i, area_type, koa, sad, ead);
+      }
       printf("       Size: %-8s  Erase: %-8s  Write: %-8s  Read: %-8s  CRC: %s\n",
           size_str,
           erase_str,
@@ -490,6 +549,8 @@ ra_get_area_info(ra_device_t *dev, bool print) {
   /* Print summary */
   if (print) {
     char size_buf[32];
+    bool dual_bank = (user_area_count > 1);
+    printf("Dual Bank Mode:     %s\n", dual_bank ? "Yes" : "No");
     printf("Memory:\n");
     if (code_flash_size > 0) {
       format_size(code_flash_size, size_buf, sizeof(size_buf));
