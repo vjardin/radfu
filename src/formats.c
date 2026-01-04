@@ -10,16 +10,14 @@
  * for full format compliance and edge case handling if needed.
  */
 
+#include "compat.h"
 #include "formats.h"
 #include <ctype.h>
-#include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #define MAX_LINE_LEN 1024
 
