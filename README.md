@@ -188,6 +188,34 @@ Examples:
   radfu -u -p /dev/ttyUSB0 info
 ```
 
+## Protocol Exploration
+
+The `raw` command allows sending arbitrary bootloader commands for protocol analysis:
+
+```sh
+# Send signature request (0x3A)
+radfu raw 0x3A
+
+# Send area info request for area 0
+radfu raw 0x3B 0x00
+```
+
+A scanning script is provided to iterate through all bootloader commands:
+
+```sh
+# Scan known commands with full details
+./scripts/scan-commands.sh -k
+
+# Scan all commands 0x00-0x7F
+./scripts/scan-commands.sh -a
+
+# Scan specific range with verbose output
+./scripts/scan-commands.sh -v -r 0x30-0x40
+
+# Query single command with data
+./scripts/scan-commands.sh -c "0x3B 0x00"
+```
+
 ## Supported Baud Rates
 
 When using UART (not USB), the following baud rates are supported:
