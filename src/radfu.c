@@ -2127,6 +2127,85 @@ find_config_area(ra_device_t *dev) {
 }
 
 /*
+ * Config area register offsets (RA4M2 specific, relative to 0x0100A100)
+ * See RA4M2 Hardware User's Manual section 6.2
+ */
+#define CFG_SAS_OFFSET 0x34       /* SAS register (contains FSPR, BTFLG) */
+#define CFG_BPS_OFFSET 0xC0       /* Block Protection Setting (18 bytes) */
+#define CFG_PBPS_OFFSET 0xE0      /* Permanent Block Protection (18 bytes) */
+#define CFG_BPS_SEC_OFFSET 0x140  /* BPS for secure region */
+#define CFG_PBPS_SEC_OFFSET 0x160 /* PBPS for secure region */
+#define CFG_BPS_SEL_OFFSET 0x1C0  /* Block protection select */
+#define CFG_BPS_LEN 18            /* BPS/PBPS register length in bytes */
+
+/* FSPR bit position in SAS register (bit 8) */
+#define SAS_FSPR_BIT 0x0100
+
+/*
+ * Count protected blocks in BPS/PBPS register
+ * A bit value of 0 means the block is protected
+ */
+static int
+count_protected_blocks(const uint8_t *bps, size_t len) {
+  int count = 0;
+  for (size_t i = 0; i < len; i++) {
+    /* Count zero bits (protected blocks) */
+    uint8_t byte = bps[i];
+    for (int b = 0; b < 8; b++) {
+      if ((byte & (1 << b)) == 0)
+        count++;
+    }
+  }
+  return count;
+}
+
+/*
+ * Print block protection status
+ */
+static void
+print_block_protection(const char *label, const uint8_t *bps, size_t len, bool is_permanent) {
+  int protected = count_protected_blocks(bps, len);
+  int total = (int)(len * 8);
+
+  /* Check if all 0xFF (no protection) */
+  bool all_ff = true;
+  for (size_t i = 0; i < len; i++) {
+    if (bps[i] != 0xFF) {
+      all_ff = false;
+      break;
+    }
+  }
+
+  if (all_ff) {
+    printf("  %s: none %s\n",
+        label,
+        is_permanent ? "(no permanent protection)" : "(no blocks protected)");
+  } else if (protected == total) {
+    printf("  %s: all blocks %s\n", label, is_permanent ? "permanently protected" : "protected");
+  } else {
+    printf("  %s: %d/%d blocks %s\n",
+        label,
+        protected,
+        total,
+        is_permanent ? "permanently protected" : "protected");
+    /* List protected block numbers */
+    printf("       blocks: ");
+    bool first = true;
+    for (size_t i = 0; i < len; i++) {
+      for (int b = 0; b < 8; b++) {
+        if ((bps[i] & (1 << b)) == 0) {
+          if (!first)
+            printf(", ");
+          printf("%zu", i * 8 + b);
+          first = false;
+        }
+      }
+    }
+    printf("\n");
+  }
+}
+
+/*
  * Print hex dump with ASCII representation
  */
 static void
@@ -2248,14 +2327,39 @@ ra_config_read(ra_device_t *dev) {
   }
 
   if (all_ff) {
-    printf("Status: Factory default (all 0xFF)\n");
-    printf("  - No block protection configured\n");
-    printf("  - No permanent protection set\n");
-    printf("  - Flash security protection disabled\n\n");
+    printf("Status: Factory default (all 0xFF)\n\n");
   } else if (all_zero) {
     printf("Status: All zeros (fully protected/locked)\n\n");
   } else {
     printf("Status: Configured (non-default values present)\n\n");
+  }
+
+  /* Parse block protection registers if config area is large enough */
+  if (size >= CFG_PBPS_OFFSET + CFG_BPS_LEN) {
+    printf("Block Protection:\n");
+
+    /* FSPR (Flash Security Protection) from SAS register */
+    if (size > CFG_SAS_OFFSET + 1) {
+      uint16_t sas = config[CFG_SAS_OFFSET] | ((uint16_t)config[CFG_SAS_OFFSET + 1] << 8);
+      bool fspr_set = (sas & SAS_FSPR_BIT) == 0; /* 0 = protected */
+      printf("  FSPR: %s (%s)\n",
+          fspr_set ? "0 (locked)" : "1 (unlocked)",
+          fspr_set ? "startup area protected" : "startup area changeable");
+    }
+
+    /* BPS - Block Protection Setting */
+    print_block_protection("BPS", &config[CFG_BPS_OFFSET], CFG_BPS_LEN, false);
+
+    /* PBPS - Permanent Block Protection Setting */
+    print_block_protection("PBPS", &config[CFG_PBPS_OFFSET], CFG_BPS_LEN, true);
+
+    /* BPS_SEC and PBPS_SEC if available */
+    if (size >= CFG_PBPS_SEC_OFFSET + CFG_BPS_LEN) {
+      print_block_protection("BPS_SEC", &config[CFG_BPS_SEC_OFFSET], CFG_BPS_LEN, false);
+      print_block_protection("PBPS_SEC", &config[CFG_PBPS_SEC_OFFSET], CFG_BPS_LEN, true);
+    }
+
+    printf("\n");
   }
 
   /* Display hex dump */

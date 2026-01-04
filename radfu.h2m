@@ -104,10 +104,12 @@ first non-blank byte if the check fails.
 .TP
 .B config-read
 Read and display the config area contents. Shows a status summary indicating
-whether the area is factory default (all 0xFF) or has been configured, followed
-by a hex dump of the raw contents. The config area contains device settings
-such as block protection (BPS/PBPS), flash security protection (FSPR), and
-boot flags.
+whether the area is factory default (all 0xFF) or has been configured, then
+displays parsed block protection settings (BPS, PBPS, FSPR), followed by a
+hex dump of the raw contents. Block protection bits indicate which flash
+blocks are protected from programming/erasure. A value of 0 means protected,
+1 means unprotected. PBPS (Permanent Block Protection) cannot be reversed
+once set to 0.
 
 [id authentication]
 Some RA devices have ID code protection enabled. To access protected devices,
