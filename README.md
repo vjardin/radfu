@@ -155,8 +155,8 @@ Commands:
   param-set <enable|disable> Enable/disable initialization command
   init                       Initialize device (factory reset to SSD state)
   osis                       Show OSIS (ID code protection) status
-  key-set <idx> <file>       Inject wrapped key from file at index
-  key-verify <idx>           Verify key at index
+  key-set <type> <file>      Inject wrapped DLM key (secdbg|nonsecdbg|rma)
+  key-verify <type>          Verify DLM key (secdbg|nonsecdbg|rma)
   ukey-set <idx> <file>      Inject user wrapped key from file at index
   ukey-verify <idx>          Verify user key at index
 
@@ -196,6 +196,106 @@ When using UART (not USB), the following baud rates are supported:
 - RA6 Series (60 MHz SCI): 9600 to 4000000 (including 2000000, 3000000, 3500000)
 
 Note: USB communication is not affected by baud rate settings.
+
+## DLM Key Management
+
+The RA family uses Device Lifecycle Management (DLM) with cryptographic keys to control
+debug access. These keys enable authenticated regression (unlocking) from locked states
+while preserving flash contents. See [security/SECURITY.md](security/SECURITY.md) for detailed explanation.
+
+### Key Types
+
+| Keyword    | KYTY | Name           | Purpose                                    |
+|------------|------|----------------|--------------------------------------------|
+| secdbg     | 0x01 | SECDBG_KEY     | Secure debug authentication                |
+| nonsecdbg  | 0x02 | NONSECDBG_KEY  | Non-secure debug authentication            |
+| rma        | 0x03 | RMA_KEY        | Return Material Authorization              |
+
+### SECDBG_KEY (secdbg)
+
+The Secure Debug Key enables authenticated regression from locked states back to SSD
+(Secure Software Development) state, allowing full debug access.
+
+Benefits:
+- Enables secure debug access on deployed devices
+- Allows returning locked devices to development state
+- Preserves flash contents during state transition
+
+Limits:
+- Requires knowledge of the injected key
+- Must be injected before transitioning to locked state
+- If lost, device cannot be unlocked without RMA
+
+Usage:
+```sh
+radfu key-set secdbg secdbg.bin    # Inject before locking
+radfu dlm-transit lck_dbg          # Lock device
+# Later, use SECDBG_KEY to authenticate and regress to SSD
+```
+
+### NONSECDBG_KEY (nonsecdbg)
+
+The Non-Secure Debug Key enables authenticated regression to NSECSD (Non-Secure Software
+Development) state, allowing debug access to non-secure regions only.
+
+Benefits:
+- Enables limited debug access on deployed devices
+- Protects secure code while allowing non-secure debugging
+- Useful for field debugging of non-secure application code
+
+Limits:
+- Cannot access secure memory regions
+- Must be injected before transitioning to locked state
+- Provides less access than SECDBG_KEY
+
+Usage:
+```sh
+radfu key-set nonsecdbg nonsecdbg.bin
+```
+
+### RMA_KEY (rma)
+
+The Return Material Authorization Key is used for the RMA flow, allowing the manufacturer
+to analyze failed devices returned from the field.
+
+Benefits:
+- Enables full device analysis for failure investigation
+- Works even on fully locked devices
+- Required for warranty/RMA processes
+
+Limits:
+- Typically only known to the manufacturer
+- Intended for factory/lab use only
+- May expose all device contents
+
+Usage:
+```sh
+radfu key-set rma rma.bin
+# Used during RMA process to regress device state
+```
+
+### Key Operations
+
+```sh
+# Inject wrapped keys (before locking the device)
+radfu key-set secdbg secdbg.bin
+radfu key-set nonsecdbg nonsecdbg.bin
+radfu key-set rma rma.bin
+
+# Verify key injection
+radfu key-verify secdbg
+radfu key-verify nonsecdbg
+radfu key-verify rma
+```
+
+### Key Wrapping
+
+DLM keys must be wrapped before injection. See [security/SECURITY.md](security/SECURITY.md) for the complete
+key wrapping process using the `rawrapkey.sh` script or Renesas SKMT tool.
+
+The wrapping process requires:
+1. A UFPK (User Factory Programming Key) - generated locally
+2. A W-UFPK (Wrapped UFPK) - obtained from Renesas DLM portal at https://dlm.renesas.com/
 
 ## ID Code Protection (OSIS)
 
