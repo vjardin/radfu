@@ -947,7 +947,6 @@ ra_verify(
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t flash_chunk[CHUNK_SIZE];
   uint8_t data[8];
-  uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
   parsed_file_t parsed;
@@ -974,29 +973,42 @@ ra_verify(
     return -1;
   }
 
-  uint32_to_be(start, &data[0]);
-  uint32_to_be(end, &data[4]);
-
-  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
-  if (pkt_len < 0) {
-    free(parsed.data);
-    return -1;
-  }
-
-  if (ra_send(dev, pkt, pkt_len) < 0) {
-    free(parsed.data);
-    return -1;
-  }
-
   uint32_t total_size = end - start + 1;
-  uint32_t nr_packets = (end - start) / CHUNK_SIZE;
+
+  /*
+   * WORKAROUND: Use single-packet reads (<=1024 bytes each) to avoid
+   * multi-packet ACK protocol issue. See protocol.md for details.
+   */
+  uint32_t nr_chunks = (total_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
   uint32_t current_addr = start;
   uint32_t file_offset = 0;
   progress_t prog;
-  progress_init(&prog, nr_packets + 1, "Verifying");
+  progress_init(&prog, nr_chunks, "Verifying");
 
-  for (uint32_t i = 0; i <= nr_packets; i++) {
-    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    /* Calculate chunk boundaries (single-packet read) */
+    uint32_t chunk_start = current_addr;
+    uint32_t remaining_flash = end - chunk_start + 1;
+    uint32_t chunk_size = (remaining_flash > CHUNK_SIZE) ? CHUNK_SIZE : remaining_flash;
+    uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+    /* Send single-packet READ command */
+    uint32_to_be(chunk_start, &data[0]);
+    uint32_to_be(chunk_end, &data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+    if (pkt_len < 0) {
+      free(parsed.data);
+      return -1;
+    }
+
+    if (ra_send(dev, pkt, pkt_len) < 0) {
+      free(parsed.data);
+      return -1;
+    }
+
+    /* Receive single data packet */
+    n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
     if (n < 7) {
       warnx("short response during verify (%zd bytes)", n);
       free(parsed.data);
@@ -1010,8 +1022,8 @@ ra_verify(
     }
 
     /* Compare flash data with file data from parsed buffer */
-    size_t remaining = parsed.size - file_offset;
-    size_t cmp_len = remaining < chunk_len ? remaining : chunk_len;
+    size_t remaining_file = parsed.size - file_offset;
+    size_t cmp_len = remaining_file < chunk_len ? remaining_file : chunk_len;
     for (size_t j = 0; j < cmp_len; j++) {
       if (flash_chunk[j] != parsed.data[file_offset + j]) {
         progress_finish(&prog);
@@ -1039,17 +1051,7 @@ ra_verify(
     }
 
     file_offset += (uint32_t)cmp_len;
-    current_addr += (uint32_t)chunk_len;
-
-    /* Send ACK for all packets except the last one (per spec 6.20.3) */
-    if (i < nr_packets) {
-      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
-      if (pkt_len < 0) {
-        free(parsed.data);
-        return -1;
-      }
-      ra_send(dev, pkt, pkt_len);
-    }
+    current_addr += chunk_size;
 
     progress_update(&prog, i + 1);
   }
