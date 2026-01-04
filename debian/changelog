@@ -1,3 +1,10 @@
+radfu (1.4.1-1) unstable; urgency=low
+
+  * Fix status command to correctly scan all flash areas including Area 0
+  * Fix multi-packet read failure with single-packet workaround
+
+ -- Vincent Jardin <vjardin@free.fr>  Sat, 04 Jan 2026 22:10:00 +0100
+
 radfu (1.4.0-1) unstable; urgency=low
 
   * Add status command with comprehensive device overview
