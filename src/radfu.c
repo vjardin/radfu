@@ -3166,7 +3166,7 @@ ra_status(ra_device_t *dev) {
 
   /* Calculate memory sizes and usage */
   uint32_t code_size = 0, code_used = 0;
-  uint32_t data_size = 0, data_used = 0;
+  uint32_t data_size = 0;
   uint32_t config_size = 0;
   uint32_t code_sad = 0, code_ead = 0;
   uint32_t data_sad = 0, data_ead = 0;
@@ -3212,17 +3212,9 @@ ra_status(ra_device_t *dev) {
     }
   }
 
-  if (data_size > 0 && dev->chip_layout[1].rau != 0) {
-    fprintf(stderr, "Scanning data flash usage...\n");
-    for (int i = 0; i < MAX_AREAS; i++) {
-      ra_area_t *area = &dev->chip_layout[i];
-      if (area->koa == KOA_TYPE_DATA && area->ead != 0 && area->rau != 0) {
-        int64_t used = status_scan_flash_usage(dev, area->sad, area->ead, area->rau);
-        if (used >= 0)
-          data_used += (uint32_t)used;
-      }
-    }
-  }
+  /* NOTE: Data flash usage scanning is skipped because erased data flash
+   * reads undefined values (not 0xFF) per Renesas RA hardware spec.
+   * The bootloader protocol does not expose a reliable blank-check method. */
 
   /* Print status display */
   printf("\n");
@@ -3372,18 +3364,12 @@ ra_status(ra_device_t *dev) {
       status_print_line(line, STATUS_WIDTH);
     }
 
-    /* Data Flash - usage bar */
-    pct = (data_size > 0) ? (int)((uint64_t)data_used * 100 / data_size) : 0;
-    int df_filled = (data_size > 0) ? (int)((uint64_t)data_used * 40 / data_size) : 0;
-    if (df_filled > 40)
-      df_filled = 40;
-    bar_buf[0] = '\0';
-    strcat(bar_buf, " ");
-    for (int i = 0; i < df_filled; i++)
-      strcat(bar_buf, BAR_FULL);
-    for (int i = df_filled; i < 40; i++)
-      strcat(bar_buf, BAR_EMPTY);
-    snprintf(content, sizeof(content), "%s  %3d%% used", bar_buf, pct);
+    /* Data Flash - usage cannot be determined (hardware limitation)
+     * Per RA4M2 manual 44.16.2: "Values read from data flash memory that has
+     * been erased but not yet been programming again are undefined."
+     * The bootloader protocol does not expose the hardware blank check. */
+    snprintf(
+        content, sizeof(content), " (usage unknown - erased data reads undefined per HW spec)");
     status_format_inner(line, sizeof(line), content, INNER_WIDTH);
     status_print_line(line, STATUS_WIDTH);
   }
