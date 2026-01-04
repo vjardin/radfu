@@ -81,10 +81,12 @@ the written data matches the file.
 
 .TP
 .B verify <file>
-Verify flash memory contents against a binary file. Compares the flash region
-with the file and reports the first mismatch if any. Use \fB-a\fR to specify
-the start address and \fB-s\fR for the size. If size is omitted, verifies
-the file size.
+Verify flash memory contents against a firmware file. Supports binary, Intel HEX,
+and Motorola S-record formats. Use \fB-f\fR to specify the format (auto-detected
+by default from extension). Use \fB-a\fR to specify the start address (if omitted
+and the file contains address information, the embedded address is used). Use
+\fB-s\fR to specify the size. If size is omitted, verifies the file size.
+Reports the first mismatch if any.
 
 .TP
 .B erase
@@ -132,8 +134,9 @@ Supported rates depend on the MCU's SCI clock:
 USB communication is not affected by baud rate settings.
 
 [input formats]
-The \fBwrite\fR command supports multiple firmware file formats. Use \fB-f\fR
-to explicitly specify the format, or let radfu auto-detect from the file extension.
+The \fBwrite\fR and \fBverify\fR commands support multiple firmware file formats.
+Use \fB-f\fR to explicitly specify the format, or let radfu auto-detect from the
+file extension.
 
 .SS Supported Formats
 .TP
@@ -166,6 +169,8 @@ radfu write firmware.hex              # Auto-detect Intel HEX, use embedded addr
 radfu write -f srec app.bin           # Force S-record parsing on .bin file
 radfu write -a 0x10000 app.s19        # Override embedded address
 radfu write -f bin -a 0x0 data.dat    # Force binary, explicit address
+radfu verify firmware.hex             # Verify flash against Intel HEX file
+radfu verify -a 0x08000000 app.s19    # Verify at explicit address
 .fi
 
 [usb vs uart]

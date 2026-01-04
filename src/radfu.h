@@ -61,9 +61,13 @@ int ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
 /*
  * Verify flash memory against file
  * Compares flash contents with file, reports first mismatch
+ * format: input file format (FORMAT_AUTO to detect from extension)
+ * If file contains address info (Intel HEX, S-record) and start==0,
+ * the embedded address is used.
  * Returns: 0 on success (match), -1 on error or mismatch
  */
-int ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size);
+int ra_verify(
+    ra_device_t *dev, const char *file, uint32_t start, uint32_t size, input_format_t format);
 
 /*
  * Check if flash memory region is blank (all 0xFF)

@@ -814,42 +814,36 @@ ra_read(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
 }
 
 int
-ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
+ra_verify(
+    ra_device_t *dev, const char *file, uint32_t start, uint32_t size, input_format_t format) {
   uint8_t pkt[MAX_PKT_LEN];
   uint8_t resp[CHUNK_SIZE + 6];
   uint8_t flash_chunk[CHUNK_SIZE];
-  uint8_t file_chunk[CHUNK_SIZE];
   uint8_t data[8];
   uint8_t ack_data[1] = { STATUS_OK };
   ssize_t pkt_len, n;
   uint32_t end;
-  int fd;
-  struct stat st;
+  parsed_file_t parsed;
 
-  fd = open(file, O_RDONLY);
-  if (fd < 0) {
-    warn("failed to open %s", file);
+  if (format_parse(file, format, &parsed) < 0)
     return -1;
-  }
 
-  if (fstat(fd, &st) < 0) {
-    warn("failed to stat %s", file);
-    close(fd);
-    return -1;
-  }
+  /* Use embedded address if available and no explicit address given */
+  if (start == 0 && parsed.has_addr)
+    start = parsed.base_addr;
 
-  uint32_t file_size = (uint32_t)st.st_size;
+  uint32_t file_size = (uint32_t)parsed.size;
   if (size == 0)
     size = file_size;
 
   if (size > file_size) {
     warnx("verify size (%u) > file size (%u)", size, file_size);
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   if (set_read_boundaries(dev, start, size, &end) < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
@@ -858,18 +852,19 @@ ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
   if (pkt_len < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   if (ra_send(dev, pkt, pkt_len) < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   uint32_t total_size = end - start + 1;
   uint32_t nr_packets = (end - start) / CHUNK_SIZE;
   uint32_t current_addr = start;
+  uint32_t file_offset = 0;
   progress_t prog;
   progress_init(&prog, nr_packets + 1, "Verifying");
 
@@ -877,59 +872,53 @@ ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
     n = ra_recv(dev, resp, CHUNK_SIZE + 6, 1000);
     if (n < 7) {
       warnx("short response during verify (%zd bytes)", n);
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
     size_t chunk_len;
     if (unpack_with_error(resp, n, flash_chunk, &chunk_len, "verify read") < 0) {
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
-    /* Read corresponding chunk from file */
-    ssize_t file_read = read(fd, file_chunk, chunk_len);
-    if (file_read < 0) {
-      warn("read from file failed");
-      close(fd);
-      return -1;
-    }
-
-    /* Compare flash data with file data */
-    size_t cmp_len = (size_t)file_read < chunk_len ? (size_t)file_read : chunk_len;
+    /* Compare flash data with file data from parsed buffer */
+    size_t remaining = parsed.size - file_offset;
+    size_t cmp_len = remaining < chunk_len ? remaining : chunk_len;
     for (size_t j = 0; j < cmp_len; j++) {
-      if (flash_chunk[j] != file_chunk[j]) {
+      if (flash_chunk[j] != parsed.data[file_offset + j]) {
         progress_finish(&prog);
         warnx("verify FAILED at 0x%08X: flash=0x%02X, file=0x%02X",
             current_addr + (uint32_t)j,
             flash_chunk[j],
-            file_chunk[j]);
-        close(fd);
+            parsed.data[file_offset + j]);
+        free(parsed.data);
         return -1;
       }
     }
 
     /* If file is shorter than flash region, remaining flash bytes should be 0xFF */
-    if ((size_t)file_read < chunk_len) {
-      for (size_t j = (size_t)file_read; j < chunk_len; j++) {
+    if (cmp_len < chunk_len) {
+      for (size_t j = cmp_len; j < chunk_len; j++) {
         if (flash_chunk[j] != 0xFF) {
           progress_finish(&prog);
           warnx("verify FAILED at 0x%08X: flash=0x%02X, expected=0xFF (beyond file)",
               current_addr + (uint32_t)j,
               flash_chunk[j]);
-          close(fd);
+          free(parsed.data);
           return -1;
         }
       }
     }
 
+    file_offset += cmp_len;
     current_addr += chunk_len;
 
     /* Send ACK for all packets except the last one (per spec 6.20.3) */
     if (i < nr_packets) {
       pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, ack_data, 1, true);
       if (pkt_len < 0) {
-        close(fd);
+        free(parsed.data);
         return -1;
       }
       ra_send(dev, pkt, pkt_len);
@@ -939,7 +928,7 @@ ra_verify(ra_device_t *dev, const char *file, uint32_t start, uint32_t size) {
   }
 
   progress_finish(&prog);
-  close(fd);
+  free(parsed.data);
 
   printf("Verify OK: %u bytes at 0x%08X match file\n", total_size, start);
   return 0;

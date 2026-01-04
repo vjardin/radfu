@@ -599,7 +599,7 @@ main(int argc, char *argv[]) {
     ret = ra_write(&dev, file, address, size, verify, input_format);
     break;
   case CMD_VERIFY:
-    ret = ra_verify(&dev, file, address, size);
+    ret = ra_verify(&dev, file, address, size, input_format);
     break;
   case CMD_ERASE:
     ret = ra_erase(&dev, address, size);
