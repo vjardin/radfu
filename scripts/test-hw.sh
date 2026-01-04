@@ -251,6 +251,113 @@ test_read_data_flash() {
     fi
 }
 
+test_multipacket_read() {
+    echo
+    log_info "=== Test: multi-packet read (>1024 bytes) ==="
+    # This tests the split-read workaround for reads larger than CHUNK_SIZE (1024)
+    # Previously failed with ERR_PCKT (0xC1) when ACK was sent after first packet
+
+    # Test 1: Read 2KB (2 packets)
+    if run_radfu read -a 0x0 -s 0x800 "$TEST_FILE.bin" >/dev/null; then
+        local size
+        size=$(stat -c%s "$TEST_FILE.bin" 2>/dev/null || stat -f%z "$TEST_FILE.bin")
+        if [ "$size" -eq 2048 ]; then
+            log_ok "multipacket-read: 2KB (2 packets)"
+        else
+            log_fail "multipacket-read: 2KB size mismatch (got $size)"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-read: 2KB read failed"
+        return 1
+    fi
+
+    # Test 2: Read 4KB (4 packets)
+    if run_radfu read -a 0x0 -s 0x1000 "$TEST_FILE.bin" >/dev/null; then
+        local size
+        size=$(stat -c%s "$TEST_FILE.bin" 2>/dev/null || stat -f%z "$TEST_FILE.bin")
+        if [ "$size" -eq 4096 ]; then
+            log_ok "multipacket-read: 4KB (4 packets)"
+        else
+            log_fail "multipacket-read: 4KB size mismatch (got $size)"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-read: 4KB read failed"
+        return 1
+    fi
+
+    # Test 3: Read 8KB (8 packets) - larger test
+    if run_radfu read -a 0x0 -s 0x2000 "$TEST_FILE.bin" >/dev/null; then
+        local size
+        size=$(stat -c%s "$TEST_FILE.bin" 2>/dev/null || stat -f%z "$TEST_FILE.bin")
+        if [ "$size" -eq 8192 ]; then
+            log_ok "multipacket-read: 8KB (8 packets)"
+        else
+            log_fail "multipacket-read: 8KB size mismatch (got $size)"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-read: 8KB read failed"
+        return 1
+    fi
+}
+
+test_multipacket_verify() {
+    echo
+    log_info "=== Test: multi-packet verify (>1024 bytes) ==="
+    # This tests the split-read workaround in verify for files larger than CHUNK_SIZE
+    # Previously failed with ERR_PCKT (0xC1) when ACK was sent after first packet
+
+    # Test 1: Read and verify 2KB (2 packets)
+    if run_radfu read -a 0x0 -s 0x800 "$TEST_FILE.bin" >/dev/null; then
+        if run_radfu verify -a 0x0 "$TEST_FILE.bin" >/dev/null 2>&1; then
+            log_ok "multipacket-verify: 2KB (2 packets)"
+        else
+            log_fail "multipacket-verify: 2KB verify failed"
+            rm -f "$TEST_FILE.bin"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-verify: 2KB read failed"
+        return 1
+    fi
+
+    # Test 2: Read and verify 4KB (4 packets)
+    if run_radfu read -a 0x0 -s 0x1000 "$TEST_FILE.bin" >/dev/null; then
+        if run_radfu verify -a 0x0 "$TEST_FILE.bin" >/dev/null 2>&1; then
+            log_ok "multipacket-verify: 4KB (4 packets)"
+        else
+            log_fail "multipacket-verify: 4KB verify failed"
+            rm -f "$TEST_FILE.bin"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-verify: 4KB read failed"
+        return 1
+    fi
+
+    # Test 3: Read and verify 8KB (8 packets)
+    if run_radfu read -a 0x0 -s 0x2000 "$TEST_FILE.bin" >/dev/null; then
+        if run_radfu verify -a 0x0 "$TEST_FILE.bin" >/dev/null 2>&1; then
+            log_ok "multipacket-verify: 8KB (8 packets)"
+        else
+            log_fail "multipacket-verify: 8KB verify failed"
+            rm -f "$TEST_FILE.bin"
+            return 1
+        fi
+        rm -f "$TEST_FILE.bin"
+    else
+        log_fail "multipacket-verify: 8KB read failed"
+        return 1
+    fi
+}
+
 test_crc() {
     echo
     log_info "=== Test: crc command (checksum calculation) ==="
@@ -784,6 +891,8 @@ Tests (default: all safe tests):
   key         Key slot verification (DLM keys)
   ukey        User key slot verification
   read        Flash read operations
+  multiread   Multi-packet read (>1024 bytes, regression test)
+  multiverify Multi-packet verify (>1024 bytes, regression test)
   crc         CRC calculation
   blank       Blank check command
   formats     Output formats (bin/ihex/srec)
@@ -869,6 +978,8 @@ for test in $TESTS; do
         key)        test_key_verify ;;
         ukey)       test_ukey_verify ;;
         read)       test_read_code_flash; test_read_data_flash ;;
+        multiread)  test_multipacket_read ;;
+        multiverify) test_multipacket_verify ;;
         crc)        test_crc ;;
         blank)      test_blank_check ;;
         formats)    test_output_formats ;;
@@ -891,6 +1002,8 @@ for test in $TESTS; do
             test_ukey_verify
             test_read_code_flash
             test_read_data_flash
+            test_multipacket_read
+            test_multipacket_verify
             test_crc
             test_blank_check
             test_output_formats
