@@ -898,7 +898,22 @@ main(int argc, char *argv[]) {
     ret = ra_verify(&dev, file, address, size, input_format);
     break;
   case CMD_ERASE:
-    ret = ra_erase(&dev, address, size);
+    /* When --area is specified, iterate over all matching areas
+     * to handle multi-area regions like code flash (area 0 + area 1) */
+    if (area_koa >= 0) {
+      for (int i = 0; i < MAX_AREAS; i++) {
+        ra_area_t *area = &dev.chip_layout[i];
+        if (area->ead == 0 || area->eau == 0)
+          continue;
+        if (area->koa != (uint8_t)area_koa)
+          continue;
+        ret = ra_erase(&dev, area->sad, area->ead - area->sad + 1);
+        if (ret < 0)
+          break;
+      }
+    } else {
+      ret = ra_erase(&dev, address, size);
+    }
     break;
   case CMD_BLANK_CHECK:
     ret = ra_blank_check(&dev, address, size);
