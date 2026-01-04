@@ -3965,3 +3965,466 @@ ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len) 
   printf("\n=== Command completed ===\n");
   return 0;
 }
+
+int
+ra_backup(ra_device_t *dev, const char *file, output_format_t format) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[CHUNK_SIZE + 6];
+  uint8_t chunk[CHUNK_SIZE];
+  uint8_t data[8];
+  ssize_t pkt_len, n;
+
+  /* Auto-detect format from extension */
+  if (format == FORMAT_AUTO)
+    format = format_detect(file);
+
+  /* Validate format - BIN cannot represent sparse data */
+  if (format == FORMAT_BIN) {
+    warnx("backup requires Intel HEX (-F ihex) or S-record (-F srec) format");
+    warnx("use .hex or .srec extension, or specify format with -F");
+    return -1;
+  }
+
+  /* Ensure chip layout is populated */
+  if (ra_get_area_info(dev, false) < 0)
+    return -1;
+
+  /* Count readable areas and calculate total size */
+  size_t num_regions = 0;
+  size_t total_size = 0;
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->ead != 0 && area->rau != 0) {
+      num_regions++;
+      total_size += area->ead - area->sad + 1;
+    }
+  }
+
+  if (num_regions == 0) {
+    warnx("no readable areas found");
+    return -1;
+  }
+
+  fprintf(stderr, "Backing up %zu regions (%.1f KB total)...\n", num_regions, total_size / 1024.0);
+
+  /* Allocate region array and data buffers */
+  backup_region_t *regions = calloc(num_regions, sizeof(backup_region_t));
+  if (!regions) {
+    warnx("failed to allocate region array");
+    return -1;
+  }
+
+  uint8_t **buffers = calloc(num_regions, sizeof(uint8_t *));
+  if (!buffers) {
+    free(regions);
+    warnx("failed to allocate buffer array");
+    return -1;
+  }
+
+  int ret = 0;
+  size_t region_idx = 0;
+
+  /* Read each area */
+  for (int i = 0; i < MAX_AREAS && region_idx < num_regions; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->ead == 0 || area->rau == 0)
+      continue;
+
+    uint32_t area_size = area->ead - area->sad + 1;
+    uint8_t *buffer = malloc(area_size);
+    if (!buffer) {
+      warnx("failed to allocate buffer for area %d", i);
+      ret = -1;
+      goto cleanup;
+    }
+    buffers[region_idx] = buffer;
+
+    /* Show area type */
+    const char *area_name;
+    switch (area->koa) {
+    case KOA_TYPE_CODE:
+      area_name = "code flash";
+      break;
+    case KOA_TYPE_CODE1:
+      area_name = "code flash bank 1";
+      break;
+    case KOA_TYPE_DATA:
+      area_name = "data flash";
+      break;
+    case KOA_TYPE_CONFIG:
+      area_name = "config area";
+      break;
+    default:
+      area_name = "unknown";
+      break;
+    }
+
+    fprintf(stderr,
+        "Reading area %d (%s): 0x%08X - 0x%08X (%.1f KB)\n",
+        i,
+        area_name,
+        area->sad,
+        area->ead,
+        area_size / 1024.0);
+
+    /* Read area using single-packet reads (WORKAROUND for multi-packet ACK issue) */
+    uint32_t nr_chunks = (area_size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    progress_t prog;
+    progress_init(&prog, nr_chunks, area_name);
+
+    uint32_t current_addr = area->sad;
+    size_t buffer_offset = 0;
+
+    for (uint32_t j = 0; j < nr_chunks; j++) {
+      uint32_t chunk_start = current_addr;
+      uint32_t remaining = area->ead - chunk_start + 1;
+      uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+      uint32_t chunk_end = chunk_start + chunk_size - 1;
+
+      /* Send single-packet READ command */
+      uint32_to_be(chunk_start, &data[0]);
+      uint32_to_be(chunk_end, &data[4]);
+
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+      if (pkt_len < 0) {
+        ret = -1;
+        goto cleanup;
+      }
+
+      if (ra_send(dev, pkt, pkt_len) < 0) {
+        ret = -1;
+        goto cleanup;
+      }
+
+      n = ra_recv(dev, resp, CHUNK_SIZE + 6, 2000);
+      if (n < 7) {
+        warnx("short response during read (%zd bytes)", n);
+        ret = -1;
+        goto cleanup;
+      }
+
+      size_t chunk_len;
+      if (unpack_with_error(resp, n, chunk, &chunk_len, "backup read") < 0) {
+        ret = -1;
+        goto cleanup;
+      }
+
+      memcpy(buffer + buffer_offset, chunk, chunk_len);
+      buffer_offset += chunk_len;
+      current_addr += chunk_size;
+
+      progress_update(&prog, j + 1);
+    }
+
+    progress_finish(&prog);
+
+    /* Store region info */
+    regions[region_idx].data = buffer;
+    regions[region_idx].size = buffer_offset;
+    regions[region_idx].addr = area->sad;
+    region_idx++;
+  }
+
+  /* Write all regions to file */
+  fprintf(stderr, "Writing backup to %s (%s format)...\n", file, format_name(format));
+  ret = format_write_multi(file, format, regions, num_regions);
+  if (ret == 0) {
+    fprintf(stderr, "Backup complete: %zu regions saved to %s\n", num_regions, file);
+  }
+
+cleanup:
+  for (size_t i = 0; i < num_regions; i++) {
+    free(buffers[i]);
+  }
+  free(buffers);
+  free(regions);
+  return ret;
+}
+
+/*
+ * Helper to write a region of data to flash
+ */
+static int
+restore_write_region(ra_device_t *dev,
+    const uint8_t *data,
+    size_t size,
+    uint32_t addr,
+    const char *name,
+    bool verify) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[64];
+  uint8_t cmd_data[8];
+  ssize_t pkt_len, n;
+
+  uint32_t nr_chunks = ((uint32_t)size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  progress_t prog;
+  progress_init(&prog, nr_chunks, name);
+
+  size_t offset = 0;
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    uint32_t chunk_start = addr + (uint32_t)offset;
+    size_t remaining = size - offset;
+    size_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+    uint32_t chunk_end = chunk_start + (uint32_t)chunk_size - 1;
+
+    /* Send WRITE command */
+    uint32_to_be(chunk_start, &cmd_data[0]);
+    uint32_to_be(chunk_end, &cmd_data[4]);
+
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, cmd_data, 8, false);
+    if (pkt_len < 0)
+      return -1;
+
+    if (ra_send(dev, pkt, pkt_len) < 0)
+      return -1;
+
+    /* Wait for ACK */
+    n = ra_recv(dev, resp, sizeof(resp), 2000);
+    if (n < 7) {
+      warnx("short response during write setup (%zd bytes)", n);
+      return -1;
+    }
+
+    size_t dlen;
+    if (unpack_with_error(resp, n, NULL, &dlen, "write setup") < 0)
+      return -1;
+
+    /* Send data packet */
+    pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, data + offset, chunk_size, true);
+    if (pkt_len < 0)
+      return -1;
+
+    if (ra_send(dev, pkt, pkt_len) < 0)
+      return -1;
+
+    /* Wait for completion ACK */
+    n = ra_recv(dev, resp, sizeof(resp), 5000);
+    if (n < 7) {
+      warnx("short response during write (%zd bytes)", n);
+      return -1;
+    }
+
+    if (unpack_with_error(resp, n, NULL, &dlen, "write") < 0)
+      return -1;
+
+    offset += chunk_size;
+    progress_update(&prog, i + 1);
+  }
+
+  progress_finish(&prog);
+
+  /* Verify if requested */
+  if (verify) {
+    progress_init(&prog, nr_chunks, "Verifying");
+    uint8_t flash_chunk[CHUNK_SIZE];
+
+    offset = 0;
+    for (uint32_t i = 0; i < nr_chunks; i++) {
+      uint32_t chunk_start = addr + (uint32_t)offset;
+      size_t remaining = size - offset;
+      size_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+      uint32_t chunk_end = chunk_start + (uint32_t)chunk_size - 1;
+
+      /* Send READ command */
+      uint32_to_be(chunk_start, &cmd_data[0]);
+      uint32_to_be(chunk_end, &cmd_data[4]);
+
+      pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, cmd_data, 8, false);
+      if (pkt_len < 0)
+        return -1;
+
+      if (ra_send(dev, pkt, pkt_len) < 0)
+        return -1;
+
+      uint8_t read_resp[CHUNK_SIZE + 6];
+      n = ra_recv(dev, read_resp, CHUNK_SIZE + 6, 2000);
+      if (n < 7) {
+        warnx("short response during verify (%zd bytes)", n);
+        return -1;
+      }
+
+      size_t chunk_len;
+      if (unpack_with_error(read_resp, n, flash_chunk, &chunk_len, "verify read") < 0)
+        return -1;
+
+      /* Compare */
+      if (memcmp(flash_chunk, data + offset, chunk_len) != 0) {
+        for (size_t j = 0; j < chunk_len; j++) {
+          if (flash_chunk[j] != data[offset + j]) {
+            warnx("verify mismatch at 0x%08X: expected 0x%02X, got 0x%02X",
+                chunk_start + (uint32_t)j,
+                data[offset + j],
+                flash_chunk[j]);
+            return -1;
+          }
+        }
+      }
+
+      offset += chunk_size;
+      progress_update(&prog, i + 1);
+    }
+
+    progress_finish(&prog);
+  }
+
+  return 0;
+}
+
+int
+ra_restore(ra_device_t *dev, const char *file, input_format_t format, bool verify) {
+  parsed_file_t parsed;
+
+  /* Parse input file */
+  if (format_parse(file, format, &parsed) < 0)
+    return -1;
+
+  if (!parsed.has_addr) {
+    warnx("restore requires file with embedded address info (Intel HEX or S-record)");
+    free(parsed.data);
+    return -1;
+  }
+
+  fprintf(stderr, "Restore file: %s\n", file);
+
+  /* Ensure chip layout is populated */
+  if (ra_get_area_info(dev, false) < 0) {
+    free(parsed.data);
+    return -1;
+  }
+
+  /*
+   * The parsed file may contain non-contiguous regions (e.g., code flash at 0x0
+   * and data flash at 0x08000000). The parser fills gaps with 0xFF, creating a
+   * large buffer. We need to write only the portions that overlap with actual
+   * flash areas, not the gap between them.
+   */
+  uint32_t file_start = parsed.base_addr;
+  uint32_t file_end = parsed.base_addr + (uint32_t)parsed.size - 1;
+
+  /* Count regions to restore */
+  int region_count = 0;
+  size_t total_size = 0;
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->ead == 0 || area->wau == 0)
+      continue;
+    /* Skip config area for restore */
+    if (area->koa == KOA_TYPE_CONFIG)
+      continue;
+
+    /* Check if this area overlaps with file data */
+    if (area->ead < file_start || area->sad > file_end)
+      continue;
+
+    region_count++;
+    uint32_t overlap_start = (area->sad > file_start) ? area->sad : file_start;
+    uint32_t overlap_end = (area->ead < file_end) ? area->ead : file_end;
+    total_size += overlap_end - overlap_start + 1;
+  }
+
+  if (region_count == 0) {
+    warnx("no flash areas overlap with file data (0x%08X - 0x%08X)", file_start, file_end);
+    free(parsed.data);
+    return -1;
+  }
+
+  fprintf(stderr, "  Regions to restore: %d (%.1f KB total)\n", region_count, total_size / 1024.0);
+
+  /* Full erase: erase all code flash and data flash areas */
+  fprintf(stderr, "Performing full chip erase...\n");
+
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->ead == 0 || area->eau == 0)
+      continue;
+
+    /* Erase code and data flash areas (skip config) */
+    if (area->koa == KOA_TYPE_CODE || area->koa == KOA_TYPE_CODE1 || area->koa == KOA_TYPE_DATA) {
+      const char *area_name;
+      switch (area->koa) {
+      case KOA_TYPE_CODE:
+        area_name = "code flash";
+        break;
+      case KOA_TYPE_CODE1:
+        area_name = "code flash bank 1";
+        break;
+      case KOA_TYPE_DATA:
+        area_name = "data flash";
+        break;
+      default:
+        area_name = "unknown";
+        break;
+      }
+
+      fprintf(
+          stderr, "Erasing area %d (%s): 0x%08X - 0x%08X\n", i, area_name, area->sad, area->ead);
+
+      if (ra_erase(dev, area->sad, area->ead - area->sad + 1) < 0) {
+        warnx("failed to erase area %d", i);
+        free(parsed.data);
+        return -1;
+      }
+    }
+  }
+
+  fprintf(stderr, "Erase complete\n");
+
+  /* Write each region that overlaps with file data */
+  fprintf(stderr, "Writing data from backup...\n");
+
+  for (int i = 0; i < MAX_AREAS; i++) {
+    ra_area_t *area = &dev->chip_layout[i];
+    if (area->ead == 0 || area->wau == 0)
+      continue;
+    /* Skip config area for restore */
+    if (area->koa == KOA_TYPE_CONFIG)
+      continue;
+
+    /* Check if this area overlaps with file data */
+    if (area->ead < file_start || area->sad > file_end)
+      continue;
+
+    /* Calculate overlap region */
+    uint32_t overlap_start = (area->sad > file_start) ? area->sad : file_start;
+    uint32_t overlap_end = (area->ead < file_end) ? area->ead : file_end;
+    uint32_t overlap_size = overlap_end - overlap_start + 1;
+
+    /* Offset into parsed data buffer */
+    size_t data_offset = overlap_start - file_start;
+
+    const char *area_name;
+    switch (area->koa) {
+    case KOA_TYPE_CODE:
+      area_name = "code flash";
+      break;
+    case KOA_TYPE_CODE1:
+      area_name = "code flash bank 1";
+      break;
+    case KOA_TYPE_DATA:
+      area_name = "data flash";
+      break;
+    default:
+      area_name = "unknown";
+      break;
+    }
+
+    fprintf(stderr,
+        "Writing area %d (%s): 0x%08X - 0x%08X (%.1f KB)\n",
+        i,
+        area_name,
+        overlap_start,
+        overlap_end,
+        overlap_size / 1024.0);
+
+    if (restore_write_region(
+            dev, parsed.data + data_offset, overlap_size, overlap_start, area_name, verify) < 0) {
+      free(parsed.data);
+      return -1;
+    }
+  }
+
+  free(parsed.data);
+  fprintf(stderr, "Restore complete\n");
+  return 0;
+}

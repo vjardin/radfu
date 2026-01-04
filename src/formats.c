@@ -635,3 +635,143 @@ format_write(
     return -1;
   }
 }
+
+/*
+ * Multi-region Intel HEX writer
+ */
+static int
+ihex_write_multi(const char *filename, const backup_region_t *regions, size_t count) {
+  FILE *fp = fopen(filename, "w");
+  if (!fp) {
+    warn("failed to open %s", filename);
+    return -1;
+  }
+
+  uint32_t current_ext_addr = 0;
+
+  for (size_t r = 0; r < count; r++) {
+    const backup_region_t *reg = &regions[r];
+    size_t offset = 0;
+
+    while (offset < reg->size) {
+      uint32_t line_addr = reg->addr + (uint32_t)offset;
+
+      /* Emit extended linear address record if needed (type 04) */
+      uint32_t ext_addr = line_addr >> 16;
+      if (ext_addr != current_ext_addr) {
+        uint8_t sum = (uint8_t)(0x02 + 0x00 + 0x00 + 0x04 + (ext_addr >> 8) + (ext_addr & 0xFF));
+        fprintf(fp, ":02000004%04X%02X\n", ext_addr, (uint8_t)(~sum + 1));
+        current_ext_addr = ext_addr;
+      }
+
+      /* Data record (type 00) */
+      size_t remaining = reg->size - offset;
+      size_t line_len = remaining < IHEX_BYTES_PER_LINE ? remaining : IHEX_BYTES_PER_LINE;
+      uint16_t rec_addr = line_addr & 0xFFFF;
+
+      uint8_t sum = (uint8_t)line_len + (rec_addr >> 8) + (rec_addr & 0xFF) + 0x00;
+      fprintf(fp, ":%02X%04X00", (unsigned)line_len, rec_addr);
+
+      for (size_t i = 0; i < line_len; i++) {
+        fprintf(fp, "%02X", reg->data[offset + i]);
+        sum += reg->data[offset + i];
+      }
+
+      fprintf(fp, "%02X\n", (uint8_t)(~sum + 1));
+      offset += line_len;
+    }
+  }
+
+  /* EOF record (type 01) */
+  fprintf(fp, ":00000001FF\n");
+
+  fclose(fp);
+  return 0;
+}
+
+/*
+ * Multi-region Motorola S-record writer
+ */
+static int
+srec_write_multi(const char *filename, const backup_region_t *regions, size_t count) {
+  FILE *fp = fopen(filename, "w");
+  if (!fp) {
+    warn("failed to open %s", filename);
+    return -1;
+  }
+
+  /* S0 header record */
+  const char *hdr = "HDR";
+  size_t hdr_len = strlen(hdr);
+  uint8_t sum = (uint8_t)(hdr_len + 3);
+  fprintf(fp, "S0%02X0000", (unsigned)(hdr_len + 3));
+  for (size_t i = 0; i < hdr_len; i++) {
+    fprintf(fp, "%02X", (uint8_t)hdr[i]);
+    sum += (uint8_t)hdr[i];
+  }
+  fprintf(fp, "%02X\n", (uint8_t)(~sum));
+
+  /* S3 data records for each region */
+  for (size_t r = 0; r < count; r++) {
+    const backup_region_t *reg = &regions[r];
+    size_t offset = 0;
+
+    while (offset < reg->size) {
+      uint32_t line_addr = reg->addr + (uint32_t)offset;
+      size_t remaining = reg->size - offset;
+      size_t line_len = remaining < SREC_BYTES_PER_LINE ? remaining : SREC_BYTES_PER_LINE;
+
+      /* Byte count = address (4) + data + checksum (1) */
+      uint8_t byte_count = (uint8_t)(4 + line_len + 1);
+      sum = byte_count;
+      sum += (line_addr >> 24) & 0xFF;
+      sum += (line_addr >> 16) & 0xFF;
+      sum += (line_addr >> 8) & 0xFF;
+      sum += line_addr & 0xFF;
+
+      fprintf(fp, "S3%02X%08X", byte_count, line_addr);
+
+      for (size_t i = 0; i < line_len; i++) {
+        fprintf(fp, "%02X", reg->data[offset + i]);
+        sum += reg->data[offset + i];
+      }
+
+      fprintf(fp, "%02X\n", (uint8_t)(~sum));
+      offset += line_len;
+    }
+  }
+
+  /* S7 end record with entry point 0 */
+  sum = 0x05;
+  fprintf(fp, "S70500000000%02X\n", (uint8_t)(~sum));
+
+  fclose(fp);
+  return 0;
+}
+
+int
+format_write_multi(
+    const char *filename, output_format_t format, const backup_region_t *regions, size_t count) {
+  if (format == FORMAT_AUTO)
+    format = format_detect(filename);
+
+  if (format == FORMAT_BIN) {
+    warnx("binary format does not support multiple non-contiguous regions");
+    return -1;
+  }
+
+  if (count == 0) {
+    warnx("no regions to write");
+    return -1;
+  }
+
+  switch (format) {
+  case FORMAT_IHEX:
+    return ihex_write_multi(filename, regions, count);
+  case FORMAT_SREC:
+    return srec_write_multi(filename, regions, count);
+  default:
+    warnx("unknown output format");
+    return -1;
+  }
+}

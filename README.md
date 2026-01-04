@@ -8,6 +8,7 @@ built-in ROM bootloader to perform firmware update operations via USB or UART/SC
 ## Features
 
 - Read/write/erase flash memory
+- Full device backup and restore (single file for all flash regions)
 - Query device information (MCU type, firmware version, memory areas)
 - Device Lifecycle Management (DLM) state control
 - TrustZone boundary configuration
@@ -146,7 +147,10 @@ Commands:
   info                       Show device and memory information
   read <file>                Read flash memory to file
   write <file>               Write file to flash memory
+  verify <file>              Verify flash memory against file
   erase                      Erase flash sectors
+  backup <file>              Backup all flash to file (requires .hex or .srec)
+  restore <file>             Restore flash from backup (full erase then write)
   crc                        Calculate CRC-32 of flash region
   dlm                        Show Device Lifecycle Management state
   dlm-transit <state>        Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)
@@ -229,6 +233,44 @@ A scanning script is provided to iterate through all bootloader commands:
 # Query single command with data
 ./scripts/scan-commands.sh -c "0x3B 0x00"
 ```
+
+## Backup and Restore
+
+The `backup` and `restore` commands provide a convenient way to save and restore
+the entire device flash contents (code flash, data flash, and config area) in a single file.
+
+### Backup
+
+```sh
+# Backup all flash areas to Intel HEX format
+radfu backup device_backup.hex
+
+# Backup to Motorola S-record format
+radfu backup device_backup.srec
+
+# Explicitly specify format
+radfu backup -F srec device_backup.dat
+```
+
+The backup command reads all readable flash areas and saves them to a single file.
+Only Intel HEX (`.hex`) and Motorola S-record (`.srec`, `.s19`) formats are supported
+because they can represent non-contiguous memory regions (code flash at 0x0, data flash
+at 0x08000000). Binary format is not supported for backup.
+
+### Restore
+
+```sh
+# Restore from backup file
+radfu restore device_backup.hex
+
+# Restore with verification
+radfu restore -v device_backup.hex
+```
+
+The restore command performs a full chip erase (code flash and data flash), then writes
+all data from the backup file. The optional `-v` flag verifies each region after writing.
+
+**Warning:** Restore erases all flash before writing. Make sure you have a valid backup.
 
 ## Supported Baud Rates
 

@@ -341,6 +341,25 @@ int ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
 int ra_config_read(ra_device_t *dev);
 
 /*
+ * Backup all flash areas to a single file
+ * Reads all readable areas (code flash, data flash, config) and saves to file.
+ * Only IHEX and SREC formats are supported (BIN cannot represent sparse data).
+ * format: output file format (FORMAT_AUTO to detect from extension)
+ * Returns: 0 on success, -1 on error
+ */
+int ra_backup(ra_device_t *dev, const char *file, output_format_t format);
+
+/*
+ * Restore flash from backup file
+ * Performs full chip erase then writes all regions from backup file.
+ * Supports IHEX and SREC formats with embedded address info.
+ * format: input file format (FORMAT_AUTO to detect from extension)
+ * verify: if true, verify after writing each region
+ * Returns: 0 on success, -1 on error
+ */
+int ra_restore(ra_device_t *dev, const char *file, input_format_t format, bool verify);
+
+/*
  * Send raw command for protocol analysis/exploration
  * Sends a command with optional data and displays detailed TX/RX analysis.
  * Useful for exploring undocumented commands or debugging protocol issues.

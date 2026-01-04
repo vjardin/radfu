@@ -120,6 +120,42 @@ blocks are protected from programming/erasure. A value of 0 means protected,
 once set to 0.
 
 .TP
+.B backup <file>
+Backup all readable flash areas to a single file. Reads code flash, data flash,
+and config area and saves them to an Intel HEX or Motorola S-record file.
+
+Only Intel HEX (.hex) and S-record (.srec, .s19) formats are supported because
+they can represent non-contiguous memory regions (code flash at 0x0, data flash
+at 0x08000000). Binary format is not supported for backup.
+
+Use \fB-F\fR to explicitly specify the output format, or let radfu auto-detect
+from the file extension.
+
+.nf
+    radfu backup device_backup.hex        # Intel HEX format
+    radfu backup device_backup.srec       # S-record format
+    radfu backup -F srec backup.dat       # Force S-record format
+.fi
+
+.TP
+.B restore <file>
+Restore flash from a backup file. Performs a full chip erase (code flash and
+data flash), then writes all data from the backup file to flash.
+
+The backup file must be in Intel HEX or Motorola S-record format with embedded
+address information. Use \fB-v\fR to verify each region after writing.
+
+.B WARNING:
+This command erases all code and data flash before writing. Make sure you have
+a valid backup before using this command.
+
+.nf
+    radfu restore device_backup.hex       # Restore from Intel HEX
+    radfu restore -v device_backup.hex    # Restore with verification
+    radfu restore device_backup.srec      # Restore from S-record
+.fi
+
+.TP
 .B raw <cmd> [data...]
 Send a raw bootloader command for protocol exploration and debugging. The command
 byte and optional data bytes are specified as hexadecimal values (with or without
@@ -428,6 +464,10 @@ radfu verify -a 0x0 firmware.bin
 radfu erase -a 0x0 -s 0x10000
 radfu blank-check -a 0x0 -s 0x10000
 radfu crc -a 0x0 -s 0x10000
+radfu backup device_backup.hex
+radfu backup device_backup.srec
+radfu restore device_backup.hex
+radfu restore -v device_backup.hex
 radfu osis
 radfu config-read
 radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0

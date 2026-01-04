@@ -92,4 +92,21 @@ int ihex_write(const char *filename, const uint8_t *data, size_t size, uint32_t 
  */
 int srec_write(const char *filename, const uint8_t *data, size_t size, uint32_t addr);
 
+/*
+ * Backup region structure for multi-region write
+ */
+typedef struct {
+  const uint8_t *data; /* Region data */
+  size_t size;         /* Region size in bytes */
+  uint32_t addr;       /* Region start address */
+} backup_region_t;
+
+/*
+ * Write multiple non-contiguous regions to file in specified format
+ * Only IHEX and SREC formats are supported (BIN cannot represent sparse data)
+ * Returns: 0 on success, -1 on error
+ */
+int format_write_multi(
+    const char *filename, output_format_t format, const backup_region_t *regions, size_t count);
+
 #endif /* FORMATS_H */
