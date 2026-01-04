@@ -2705,6 +2705,59 @@ ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len) 
   /* Check if response indicates error */
   if (n >= 4 && (resp[3] & 0x80)) {
     printf("\n*** Response indicates ERROR ***\n");
+
+    /* Provide hints for ERR_PCKT (command recognized but needs data) */
+    if (n >= 5 && resp[4] == ERR_PCKT) {
+      uint8_t orig_cmd = resp[3] & 0x7F;
+      printf("\nHint: Command 0x%02X is recognized but requires data.\n", orig_cmd);
+      switch (orig_cmd) {
+      case 0x12: /* ERA */
+      case 0x13: /* WRI */
+      case 0x15: /* REA */
+      case 0x18: /* CRC */
+        printf("      Required: SAD[4] + EAD[4] (8 bytes, big-endian addresses)\n");
+        printf("      Example: radfu raw 0x%02X 00 00 00 00 00 00 00 FF\n", orig_cmd);
+        break;
+      case 0x34: /* BAU */
+        printf("      Required: BRT[4] (4 bytes, big-endian baud rate)\n");
+        printf("      Example: radfu raw 0x34 00 01 C2 00  (115200 bps)\n");
+        break;
+      case 0x3B: /* ARE */
+        printf("      Required: NUM[1] (1 byte, area number 0-3)\n");
+        printf("      Example: radfu raw 0x3B 00\n");
+        break;
+      case 0x30: /* AUTH/IDA */
+        printf("      Required: ID code (16 bytes) or SDLM+DDLM+CHCT (3 bytes)\n");
+        break;
+      case 0x4E: /* BND_SET */
+        printf("      Required: CFS1[2]+CFS2[2]+DFS[2]+SRS1[2]+SRS2[2] (10 bytes)\n");
+        break;
+      case 0x50: /* INI */
+        printf("      Required: SDLM[1]+DDLM[1] (2 bytes)\n");
+        break;
+      case 0x51: /* PRM_SET */
+        printf("      Required: PMID[1]+PMDT[1] (2 bytes)\n");
+        break;
+      case 0x52: /* PRM */
+        printf("      Required: PMID[1] (1 byte, parameter ID)\n");
+        printf("      Example: radfu raw 0x52 01\n");
+        break;
+      case 0x71: /* DLM_TRANSIT */
+        printf("      Required: SDLM[1]+DDLM[1] (2 bytes)\n");
+        break;
+      case 0x28: /* KEY */
+        printf("      Required: KYTY[1]+wrapped_key (1+80 bytes)\n");
+        break;
+      case 0x29: /* KEY_VFY */
+      case 0x2B: /* UKEY_VFY */
+        printf("      Required: KYID[1] (1 byte, key index)\n");
+        printf("      Example: radfu raw 0x%02X 01\n", orig_cmd);
+        break;
+      default:
+        printf("      Check protocol documentation for required data format.\n");
+        break;
+      }
+    }
     return -1;
   }
 

@@ -40,7 +40,8 @@
 
 /* MCU error codes */
 #define ERR_UNSU 0x0C /* Unsupported command */
-#define ERR_PCKT 0xC1 /* Packet error (length/ETX) */
+#define ERR_NSCM 0xC0 /* Unrecognized command (not supported by bootloader) */
+#define ERR_PCKT 0xC1 /* Packet error (command recognized, data missing/invalid) */
 #define ERR_CHKS 0xC2 /* Checksum mismatch */
 #define ERR_FLOW 0xC3 /* Command flow error */
 #define ERR_ADDR 0xD0 /* Invalid address */

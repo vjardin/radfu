@@ -16,8 +16,9 @@ static const struct {
   const char *name;
   const char *desc;
 } error_codes[] = {
-  { ERR_UNSU, "ERR_UNSU", "unsupported command"                },
-  { ERR_PCKT, "ERR_PCKT", "packet error (length/ETX)"          },
+  { ERR_UNSU, "ERR_UNSU", "unsupported command"                         },
+  { ERR_NSCM, "ERR_NSCM", "unrecognized command"                        },
+  { ERR_PCKT, "ERR_PCKT", "packet error (command recognized, need data)" },
   { ERR_CHKS, "ERR_CHKS", "checksum mismatch"                  },
   { ERR_FLOW, "ERR_FLOW", "command flow error"                 },
   { ERR_ADDR, "ERR_ADDR", "invalid address"                    },

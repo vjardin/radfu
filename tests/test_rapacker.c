@@ -241,7 +241,8 @@ test_strdesc(void **state) {
 
   /* Test error descriptions */
   assert_string_equal(ra_strdesc(ERR_UNSU), "unsupported command");
-  assert_string_equal(ra_strdesc(ERR_PCKT), "packet error (length/ETX)");
+  assert_string_equal(ra_strdesc(ERR_NSCM), "unrecognized command");
+  assert_string_equal(ra_strdesc(ERR_PCKT), "packet error (command recognized, need data)");
   assert_string_equal(ra_strdesc(ERR_CHKS), "checksum mismatch");
   assert_string_equal(ra_strdesc(ERR_FLOW), "command flow error");
   assert_string_equal(ra_strdesc(ERR_ADDR), "invalid address");
