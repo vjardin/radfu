@@ -60,6 +60,8 @@ endif
 if host_machine.system() == 'windows'
   # Windows requires SetupAPI for USB device detection
   deps += cc.find_library('setupapi')
+  # Suppress MSVC warnings about deprecated CRT functions (fopen, sscanf, getenv, etc.)
+  add_project_arguments('-D_CRT_SECURE_NO_WARNINGS', language : 'c')
 elif host_machine.system() == 'darwin'
   # macOS requires IOKit and CoreFoundation for USB device detection
   deps += dependency('appleframeworks', modules : ['IOKit', 'CoreFoundation'])

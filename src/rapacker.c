@@ -52,7 +52,7 @@ ra_strdesc(uint8_t code) {
 
 uint8_t
 ra_calc_sum(uint8_t cmd, const uint8_t *data, size_t len) {
-  uint16_t pkt_len = len + 1;
+  uint16_t pkt_len = (uint16_t)(len + 1);
   uint8_t lnh = (pkt_len >> 8) & 0xFF;
   uint8_t lnl = pkt_len & 0xFF;
   uint32_t sum = lnh + lnl + cmd;
@@ -77,7 +77,7 @@ ra_pack_pkt(uint8_t *buf, size_t buflen, uint8_t cmd, const uint8_t *data, size_
     return -1;
   }
 
-  uint16_t data_len = len + 1; /* includes CMD in length */
+  uint16_t data_len = (uint16_t)(len + 1); /* includes CMD in length */
   uint8_t lnh = (data_len >> 8) & 0xFF;
   uint8_t lnl = data_len & 0xFF;
   uint8_t sum = ra_calc_sum(cmd, data, len);

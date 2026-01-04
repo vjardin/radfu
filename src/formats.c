@@ -121,7 +121,7 @@ bin_parse(const char *filename, parsed_file_t *out) {
     return -1;
   }
 
-  ssize_t n = read(fd, out->data, out->size);
+  ssize_t n = read(fd, out->data, (unsigned int)out->size);
   close(fd);
 
   if (n < 0 || (size_t)n != out->size) {
@@ -186,14 +186,14 @@ ihex_parse(const char *filename, parsed_file_t *out) {
       goto fail;
     }
 
-    uint16_t addr = (addr_hi << 8) | addr_lo;
+    uint16_t addr = (uint16_t)((addr_hi << 8) | addr_lo);
     size_t expected_len = 8 + byte_count * 2 + 2;
     if (len < expected_len) {
       warnx("%s:%d: line too short for byte count", filename, line_num);
       goto fail;
     }
 
-    uint8_t checksum = byte_count + addr_hi + addr_lo + rec_type;
+    uint8_t checksum = (uint8_t)(byte_count + addr_hi + addr_lo + rec_type);
     uint8_t data[256];
     for (int i = 0; i < byte_count; i++) {
       int b = hex_byte(p + 8 + i * 2);
@@ -201,8 +201,8 @@ ihex_parse(const char *filename, parsed_file_t *out) {
         warnx("%s:%d: invalid hex digits in data", filename, line_num);
         goto fail;
       }
-      data[i] = b;
-      checksum += b;
+      data[i] = (uint8_t)b;
+      checksum = (uint8_t)(checksum + b);
     }
 
     int file_checksum = hex_byte(p + 8 + byte_count * 2);
@@ -210,7 +210,7 @@ ihex_parse(const char *filename, parsed_file_t *out) {
       warnx("%s:%d: invalid checksum hex", filename, line_num);
       goto fail;
     }
-    checksum += file_checksum;
+    checksum = (uint8_t)(checksum + file_checksum);
     if (checksum != 0) {
       warnx("%s:%d: checksum mismatch", filename, line_num);
       goto fail;
@@ -377,7 +377,7 @@ srec_parse(const char *filename, parsed_file_t *out) {
       goto fail;
     }
 
-    uint8_t checksum = byte_count;
+    uint8_t checksum = (uint8_t)byte_count;
     uint32_t addr = 0;
     for (int i = 0; i < addr_bytes; i++) {
       int b = hex_byte(p + 2 + i * 2);
@@ -385,8 +385,8 @@ srec_parse(const char *filename, parsed_file_t *out) {
         warnx("%s:%d: invalid address hex", filename, line_num);
         goto fail;
       }
-      addr = (addr << 8) | b;
-      checksum += b;
+      addr = (addr << 8) | (uint32_t)b;
+      checksum = (uint8_t)(checksum + b);
     }
 
     int data_bytes = byte_count - addr_bytes - 1;
@@ -397,8 +397,8 @@ srec_parse(const char *filename, parsed_file_t *out) {
         warnx("%s:%d: invalid data hex", filename, line_num);
         goto fail;
       }
-      data[i] = b;
-      checksum += b;
+      data[i] = (uint8_t)b;
+      checksum = (uint8_t)(checksum + b);
     }
 
     int file_checksum = hex_byte(p + 2 + addr_bytes * 2 + data_bytes * 2);
@@ -406,7 +406,7 @@ srec_parse(const char *filename, parsed_file_t *out) {
       warnx("%s:%d: invalid checksum hex", filename, line_num);
       goto fail;
     }
-    checksum += file_checksum;
+    checksum = (uint8_t)(checksum + file_checksum);
     if (checksum != 0xFF) {
       warnx("%s:%d: checksum mismatch", filename, line_num);
       goto fail;
@@ -517,7 +517,7 @@ ihex_write(const char *filename, const uint8_t *data, size_t size, uint32_t addr
     /* Emit extended linear address record if needed (type 04) */
     uint32_t ext_addr = line_addr >> 16;
     if (ext_addr != current_ext_addr) {
-      uint8_t sum = 0x02 + 0x00 + 0x00 + 0x04 + (ext_addr >> 8) + (ext_addr & 0xFF);
+      uint8_t sum = (uint8_t)(0x02 + 0x00 + 0x00 + 0x04 + (ext_addr >> 8) + (ext_addr & 0xFF));
       fprintf(fp, ":02000004%04X%02X\n", ext_addr, (uint8_t)(~sum + 1));
       current_ext_addr = ext_addr;
     }

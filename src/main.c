@@ -806,8 +806,8 @@ main(int argc, char *argv[]) {
     if (best > 9600) {
       if (ra_set_baudrate(&dev, best) == 0) {
         /* Verify communication works at new rate */
-        uint32_t verify;
-        if (ra_get_rmb(&dev, &verify) < 0) {
+        uint32_t rmb_check;
+        if (ra_get_rmb(&dev, &rmb_check) < 0) {
           ra_close(&dev);
           errx(EXIT_FAILURE,
               "communication failed at %u bps, reset board and use -b 115200 or lower",

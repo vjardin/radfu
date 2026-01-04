@@ -1035,8 +1035,8 @@ ra_verify(
       }
     }
 
-    file_offset += cmp_len;
-    current_addr += chunk_len;
+    file_offset += (uint32_t)cmp_len;
+    current_addr += (uint32_t)chunk_len;
 
     /* Send ACK for all packets except the last one (per spec 6.20.3) */
     if (i < nr_packets) {
@@ -1114,7 +1114,7 @@ ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size) {
       }
     }
 
-    current_addr += chunk_len;
+    current_addr += (uint32_t)chunk_len;
 
     /* Send ACK for all packets except the last one (per spec 6.20.3) */
     if (i < nr_packets) {
