@@ -142,6 +142,7 @@ To find which COM port the device is using, open Device Manager and look under
 Usage: radfu <command> [options] [file]
 
 Commands:
+  status                     Show comprehensive device status with ASCII diagram
   info                       Show device and memory information
   read <file>                Read flash memory to file
   write <file>               Write file to flash memory
@@ -178,6 +179,7 @@ Options:
   -V, --version        Show version
 
 Examples:
+  radfu status
   radfu info
   radfu read -a 0x0 -s 0x10000 firmware.bin
   radfu write -b 1000000 -a 0x0 -v firmware.bin
@@ -187,6 +189,18 @@ Examples:
   radfu osis
   radfu -u -p /dev/ttyUSB0 info
 ```
+
+## Device Status
+
+The `radfu status` command provides a comprehensive overview of the device including
+memory layout, flash usage, security configuration, and warnings for unsecured devices.
+See [HARDWARE.md](HARDWARE.md) for complete output example and board documentation.
+
+The bar symbols indicate protection status:
+- `█`/`░` - Used/empty blocks without protection
+- `▓`/`▒` - BPS (Block Protection Setting) protected blocks
+- `◆`/`◇` - PBPS (Permanent Block Protection) - cannot be revoked
+- `S`/`N` - TrustZone Secure/NSC regions
 
 ## Protocol Exploration
 
@@ -428,6 +442,7 @@ ls /dev/ttyACM*
 
 ### Board Documentation
 
+- [HARDWARE.md](HARDWARE.md) - EK-RA4M2 board layout, pin connections, and wiring diagrams
 - [EK-RA4M2 v1 User's Manual](https://www.renesas.com/en/document/man/ek-ra4m2-v1-users-manual) - See page 28 for J16 jumper details
 
 ## UART Mode
@@ -522,4 +537,4 @@ No proprietary source code or confidential material is included. See LEGAL.md fo
 
 AGPL-3.0-or-later
 
-Copyright (C) Vincent Jardin <vjardin@free.fr> Free Mobile 2025
+Copyright (C) Vincent Jardin <vjardin@free.fr> Free Mobile 2025-2026
