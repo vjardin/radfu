@@ -35,7 +35,7 @@ usage(int status) {
       "  write <file>[:<addr>] ...  Write file(s) to flash memory\n"
       "  verify <file>  Verify flash memory against file\n"
       "  erase          Erase flash sectors\n"
-      "  blank-check    Check if flash region is erased (all 0xFF)\n"
+      "  blank-check    Check if flash region is erased (code flash only)\n"
       "  crc            Calculate CRC-32 of flash region\n"
       "  dlm            Show Device Lifecycle Management state\n"
       "  dlm-transit <state>  Transition DLM state (ssd/nsecsd/dpl/lck_dbg/lck_boot)\n"

@@ -74,6 +74,11 @@ int ra_verify(
 /*
  * Check if flash memory region is blank (all 0xFF)
  * Reports first non-blank byte if found
+ *
+ * NOTE: This only works reliably for code flash. Data flash returns
+ * undefined values after erase (not 0xFF) per Renesas RA hardware spec.
+ * The bootloader protocol does not expose the hardware blank-check command.
+ *
  * Returns: 0 on success (blank), -1 on error or non-blank
  */
 int ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size);
