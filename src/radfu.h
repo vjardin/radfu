@@ -142,6 +142,16 @@ const char *ra_dlm_state_name(uint8_t code);
 #define ADDR_CONFIG_END 0x02000000       /* Config area end (exclusive) */
 
 /*
+ * Find area by Kind of Area (KOA) type
+ * Combines all areas matching KOA into a single SAD/EAD range
+ * koa: KOA type (0x00=code, 0x10=data, 0x20=config)
+ * sad_out: pointer to store start address (may be NULL)
+ * ead_out: pointer to store end address (may be NULL)
+ * Returns: 0 on success, -1 if no matching area found
+ */
+int ra_find_area_by_koa(ra_device_t *dev, uint8_t koa, uint32_t *sad_out, uint32_t *ead_out);
+
+/*
  * Transition DLM state without authentication
  * Supported on GrpA (RA4M2/3, RA6M4/5), GrpB (RA4E1, RA6E1), GrpC (RA6T2)
  * Not supported on GrpD (RA4E2, RA6E2, RA4T1, RA6T3)

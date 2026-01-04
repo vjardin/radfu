@@ -94,6 +94,38 @@ find_area_for_address(ra_device_t *dev, uint32_t addr) {
   return -1;
 }
 
+int
+ra_find_area_by_koa(ra_device_t *dev, uint8_t koa, uint32_t *sad_out, uint32_t *ead_out) {
+  uint32_t combined_sad = 0xFFFFFFFF;
+  uint32_t combined_ead = 0;
+  int found = 0;
+
+  /* Find all areas matching KOA and combine their ranges */
+  for (int i = 0; i < MAX_AREAS; i++) {
+    if (dev->chip_layout[i].sad == 0 && dev->chip_layout[i].ead == 0)
+      continue;
+    if (dev->chip_layout[i].koa == koa) {
+      if (dev->chip_layout[i].sad < combined_sad)
+        combined_sad = dev->chip_layout[i].sad;
+      if (dev->chip_layout[i].ead > combined_ead)
+        combined_ead = dev->chip_layout[i].ead;
+      found = 1;
+    }
+  }
+
+  if (!found) {
+    warnx("no area found with KOA 0x%02X", koa);
+    return -1;
+  }
+
+  if (sad_out)
+    *sad_out = combined_sad;
+  if (ead_out)
+    *ead_out = combined_ead;
+
+  return 0;
+}
+
 /*
  * Set boundaries for erase operations (requires EAU alignment)
  */

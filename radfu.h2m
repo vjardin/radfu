@@ -211,6 +211,39 @@ radfu read -a 0x0 -s 0x10000 -F srec out.dat # Force S-record format
 radfu read -a 0x08000000 -s 0x2000 data.bin  # Binary output
 .fi
 
+[area selection]
+The \\fB--area\\fR option selects a memory area by type instead of requiring
+explicit address and size. This simplifies operations on data flash or config
+areas where addresses differ between MCU variants.
+
+.SS Area Types
+.TP
+.B code
+User/code flash area (KOA=0x00). The primary firmware storage area.
+Typically starts at 0x00000000.
+.TP
+.B data
+Data flash area (KOA=0x10). Non-volatile storage for application data.
+Typically starts at 0x08000000.
+.TP
+.B config
+Configuration area (KOA=0x20). Contains block protection settings,
+boot flags, and other device configuration. Read-only for most operations.
+
+.SS Usage
+When \\fB--area\\fR is specified, the address and size are automatically
+determined from the device's area information response. You can still use
+\\fB-a\\fR and \\fB-s\\fR to override the defaults.
+
+.SS Examples
+.nf
+radfu read --area data data.bin           # Read entire data flash
+radfu erase --area data                   # Erase data flash
+radfu blank-check --area data             # Check data flash is erased
+radfu crc --area config                   # CRC of config area
+radfu write --area data eeprom.bin        # Write to data flash
+.fi
+
 [usb vs uart]
 RA microcontrollers support two communication interfaces for the ROM bootloader:
 

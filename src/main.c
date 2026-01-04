@@ -62,6 +62,7 @@ usage(int status) {
       "  -v, --verify         Verify after write\n"
       "  -f, --input-format <fmt>  Input file format (auto/bin/ihex/srec)\n"
       "  -F, --output-format <fmt> Output file format (auto/bin/ihex/srec)\n"
+      "      --area <type>    Select memory area (code/data/config or KOA value)\n"
       "  -u, --uart           Use plain UART mode (P109/P110 pins)\n"
       "      --cfs1 <KB>      Code flash secure region size without NSC\n"
       "      --cfs2 <KB>      Code flash secure region size (total)\n"
@@ -268,6 +269,7 @@ parse_key_type(const char *str) {
 #define OPT_DFS 258
 #define OPT_SRS1 259
 #define OPT_SRS2 260
+#define OPT_AREA 261
 
 static const struct option longopts[] = {
   { "port",          required_argument, NULL, 'p'      },
@@ -285,6 +287,7 @@ static const struct option longopts[] = {
   { "dfs",           required_argument, NULL, OPT_DFS  },
   { "srs1",          required_argument, NULL, OPT_SRS1 },
   { "srs2",          required_argument, NULL, OPT_SRS2 },
+  { "area",          required_argument, NULL, OPT_AREA },
   { "help",          no_argument,       NULL, 'h'      },
   { "version",       no_argument,       NULL, 'V'      },
   { NULL,            0,                 NULL, 0        }
@@ -313,6 +316,7 @@ main(int argc, char *argv[]) {
   ra_boundary_t bnd = { 0 };
   bool bnd_cfs1_set = false, bnd_cfs2_set = false, bnd_dfs_set = false;
   bool bnd_srs1_set = false, bnd_srs2_set = false;
+  int8_t area_koa = -1; /* -1 = not set, 0/1/2 = code/data/config */
   enum command cmd = CMD_NONE;
   int opt;
 
@@ -385,6 +389,21 @@ main(int argc, char *argv[]) {
     case OPT_SRS2:
       bnd.srs2 = (uint16_t)strtoul(optarg, NULL, 10);
       bnd_srs2_set = true;
+      break;
+    case OPT_AREA:
+      if (strcasecmp(optarg, "code") == 0)
+        area_koa = KOA_TYPE_CODE;
+      else if (strcasecmp(optarg, "data") == 0)
+        area_koa = KOA_TYPE_DATA;
+      else if (strcasecmp(optarg, "config") == 0)
+        area_koa = KOA_TYPE_CONFIG;
+      else {
+        char *endptr;
+        unsigned long val = strtoul(optarg, &endptr, 0);
+        if (*endptr != '\0' || val > 0x20)
+          errx(EXIT_FAILURE, "invalid area: %s (use code/data/config or KOA value)", optarg);
+        area_koa = (int8_t)val;
+      }
       break;
     case 'h':
       usage(EXIT_SUCCESS);
@@ -540,6 +559,20 @@ main(int argc, char *argv[]) {
   if (ra_get_area_info(&dev, false) < 0) {
     ra_close(&dev);
     errx(EXIT_FAILURE, "failed to get area info");
+  }
+
+  /* Resolve --area to address/size if specified */
+  if (area_koa >= 0) {
+    uint32_t area_sad, area_ead;
+    if (ra_find_area_by_koa(&dev, (uint8_t)area_koa, &area_sad, &area_ead) < 0) {
+      ra_close(&dev);
+      errx(EXIT_FAILURE, "area not found");
+    }
+    /* --area sets defaults, -a/-s can still override */
+    if (address == 0)
+      address = area_sad;
+    if (size == 0)
+      size = area_ead - area_sad + 1;
   }
 
   /* Note: IDA with all-0xFF fails with 0xC1 on unlocked devices
