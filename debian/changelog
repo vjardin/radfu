@@ -1,3 +1,19 @@
+radfu (1.3.0-1) unstable; urgency=low
+
+  * Add raw command for protocol exploration
+  * Add bootloader command scanner script with UART support
+  * Add multiple file programming support
+  * Add Intel HEX and S-record format support (input/output)
+  * Add config-read command for config area inspection
+  * Add verify and blank-check commands
+  * Add dlm-auth command for authenticated DLM state transitions
+  * Add .rpd file support for boundary-set command
+  * Add progress bar with speed and ETA display
+  * Add --area option for explicit memory area selection
+  * Fix KOA constants and query buffer sizing
+
+ -- Vincent Jardin <vjardin@free.fr>  Sat, 04 Jan 2025 17:00:00 +0100
+
 radfu (1.2.0-1) unstable; urgency=low
 
   * Add native Windows support
