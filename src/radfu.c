@@ -2462,3 +2462,252 @@ ra_config_read(ra_device_t *dev) {
   free(config);
   return 0;
 }
+
+/*
+ * Known command names for protocol analysis
+ */
+static const char *
+get_cmd_name(uint8_t cmd) {
+  switch (cmd) {
+  case 0x00:
+    return "INQ (Inquiry)";
+  case 0x12:
+    return "ERA (Erase)";
+  case 0x13:
+    return "WRI (Write)";
+  case 0x15:
+    return "REA (Read)";
+  case 0x18:
+    return "CRC (CRC calculation)";
+  case 0x28:
+    return "KEY (Key setting)";
+  case 0x29:
+    return "KEY_VFY (Key verify)";
+  case 0x2A:
+    return "UKEY (User key setting)";
+  case 0x2B:
+    return "UKEY_VFY (User key verify)";
+  case 0x2C:
+    return "DLM (DLM state request)";
+  case 0x30:
+    return "AUTH (Authentication/ID code)";
+  case 0x34:
+    return "BAU (Baud rate setting)";
+  case 0x3A:
+    return "SIG (Signature request)";
+  case 0x3B:
+    return "ARE (Area information)";
+  case 0x4E:
+    return "BND_SET (Boundary setting)";
+  case 0x4F:
+    return "BND (Boundary request)";
+  case 0x50:
+    return "INI (Initialize)";
+  case 0x51:
+    return "PRM_SET (Parameter setting)";
+  case 0x52:
+    return "PRM (Parameter request)";
+  case 0x71:
+    return "DLM_TRANSIT (DLM state transit)";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+/*
+ * Print packet hexdump with field annotations
+ */
+static void
+print_packet_analysis(const char *direction, const uint8_t *pkt, size_t len, bool is_response) {
+  printf("\n%s Packet (%zu bytes):\n", direction, len);
+
+  /* Raw hexdump */
+  printf("  Raw: ");
+  for (size_t i = 0; i < len; i++) {
+    printf("%02X ", pkt[i]);
+    if ((i + 1) % 16 == 0 && i + 1 < len)
+      printf("\n       ");
+  }
+  printf("\n");
+
+  /* Field analysis */
+  if (len < 6) {
+    printf("  (packet too short for analysis)\n");
+    return;
+  }
+
+  uint8_t sod = pkt[0];
+  uint8_t lnh = pkt[1];
+  uint8_t lnl = pkt[2];
+  uint8_t cmd = pkt[3];
+  uint16_t data_len = ((uint16_t)lnh << 8) | lnl;
+
+  printf("  Fields:\n");
+  if (is_response) {
+    printf("    SOD: 0x%02X (%s)\n", sod, sod == 0x81 ? "data packet" : "INVALID");
+  } else {
+    printf("    SOH: 0x%02X (%s)\n", sod, sod == 0x01 ? "command packet" : "INVALID");
+  }
+  printf("    LNH: 0x%02X, LNL: 0x%02X (length=%u)\n", lnh, lnl, data_len);
+
+  if (is_response) {
+    uint8_t sts = cmd & 0x7F;
+    bool is_err = (cmd & 0x80) != 0;
+    printf("    RES: 0x%02X (%s | %s)\n", cmd, get_cmd_name(sts), is_err ? "ERROR" : "OK");
+  } else {
+    printf("    CMD: 0x%02X (%s)\n", cmd, get_cmd_name(cmd));
+  }
+
+  /* Data payload */
+  if (data_len > 1 && len >= 4 + (size_t)data_len) {
+    printf("    DATA (%u bytes):", data_len - 1);
+    for (uint16_t i = 0; i < data_len - 1 && i < 64; i++) {
+      if (i % 16 == 0)
+        printf("\n      ");
+      printf("%02X ", pkt[4 + i]);
+    }
+    if (data_len - 1 > 64)
+      printf("... (%u more bytes)", data_len - 1 - 64);
+    printf("\n");
+
+    /* Specific field analysis based on command */
+    if (!is_response && data_len >= 9 &&
+        (cmd == 0x12 || cmd == 0x13 || cmd == 0x15 || cmd == 0x18)) {
+      /* ERA/WRI/REA/CRC: SAD[4] + EAD[4] */
+      uint32_t sad = be_to_uint32(&pkt[4]);
+      uint32_t ead = be_to_uint32(&pkt[8]);
+      printf("    -> SAD: 0x%08X, EAD: 0x%08X (size: %u bytes)\n", sad, ead, ead - sad + 1);
+    } else if (!is_response && data_len >= 5 && cmd == 0x34) {
+      /* BAU: BRT[4] */
+      uint32_t brt = be_to_uint32(&pkt[4]);
+      printf("    -> BRT: %u bps\n", brt);
+    } else if (!is_response && data_len >= 2 && cmd == 0x3B) {
+      /* ARE: NUM[1] */
+      printf("    -> Area number: %u\n", pkt[4]);
+    } else if (is_response && cmd == 0x3A && data_len >= 42) {
+      /* SIG response: RMB[4] + NOA[1] + TYP[1] + BFV[3] + DID[16] + PTN[16] */
+      uint32_t rmb = be_to_uint32(&pkt[4]);
+      uint8_t noa = pkt[8];
+      uint8_t typ = pkt[9];
+      printf("    -> RMB: %u bps, NOA: %u, TYP: 0x%02X\n", rmb, noa, typ);
+      printf("    -> BFV: %u.%u.%u\n", pkt[10], pkt[11], pkt[12]);
+      printf("    -> DID: ");
+      for (int i = 0; i < 16; i++)
+        printf("%02X", pkt[13 + i]);
+      printf("\n");
+      printf("    -> PTN: \"");
+      for (int i = 0; i < 16; i++) {
+        uint8_t c = pkt[29 + i];
+        printf("%c", (c >= 0x20 && c <= 0x7E) ? c : '.');
+      }
+      printf("\"\n");
+    } else if (is_response && (cmd & 0x7F) == 0x3B && data_len >= 26) {
+      /* ARE response: KOA[1] + SAD[4] + EAD[4] + EAU[4] + WAU[4] + RAU[4] + CAU[4] */
+      uint8_t koa = pkt[4];
+      uint32_t sad = be_to_uint32(&pkt[5]);
+      uint32_t ead = be_to_uint32(&pkt[9]);
+      uint32_t eau = be_to_uint32(&pkt[13]);
+      uint32_t wau = be_to_uint32(&pkt[17]);
+      uint32_t rau = be_to_uint32(&pkt[21]);
+      const char *koa_name = "unknown";
+      if (koa == 0x00)
+        koa_name = "Code flash (bank 0)";
+      else if (koa == 0x01)
+        koa_name = "Code flash (bank 1)";
+      else if (koa == 0x10)
+        koa_name = "Data flash";
+      else if (koa == 0x20)
+        koa_name = "Config area";
+      printf("    -> KOA: 0x%02X (%s)\n", koa, koa_name);
+      printf("    -> SAD: 0x%08X, EAD: 0x%08X\n", sad, ead);
+      printf("    -> EAU: %u, WAU: %u, RAU: %u\n", eau, wau, rau);
+    } else if (is_response && (cmd & 0x7F) == 0x2C && data_len >= 2) {
+      /* DLM response: DLM[1] */
+      uint8_t dlm = pkt[4];
+      printf("    -> DLM state: 0x%02X (%s)\n", dlm, ra_dlm_state_name(dlm));
+    } else if (is_response && (cmd & 0x80) && data_len >= 10) {
+      /* Error response: STS[1] + ST2[4] + ADR[4] */
+      uint8_t sts = pkt[4];
+      uint32_t st2 = be_to_uint32(&pkt[5]);
+      uint32_t adr = be_to_uint32(&pkt[9]);
+      printf("    -> STS: 0x%02X (%s - %s)\n", sts, ra_strerror(sts), ra_strdesc(sts));
+      if (st2 != 0xFFFFFFFF)
+        printf("    -> ST2: 0x%08X (FSTATR)\n", st2);
+      if (adr != 0xFFFFFFFF)
+        printf("    -> ADR: 0x%08X\n", adr);
+    }
+  }
+
+  /* Checksum and ETX */
+  if (len >= 6) {
+    uint8_t sum = pkt[len - 2];
+    uint8_t etx = pkt[len - 1];
+
+    /* Verify checksum */
+    uint8_t calc_sum = 0;
+    for (size_t i = 1; i < len - 2; i++)
+      calc_sum += pkt[i];
+    calc_sum = (~calc_sum + 1) & 0xFF;
+
+    printf("    SUM: 0x%02X (%s)\n", sum, sum == calc_sum ? "valid" : "INVALID");
+    printf("    ETX: 0x%02X (%s)\n", etx, etx == 0x03 ? "valid" : "INVALID");
+  }
+}
+
+int
+ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[MAX_PKT_LEN];
+  ssize_t pkt_len, n;
+
+  printf("=== Raw Command Analysis ===\n");
+  printf("Command: 0x%02X (%s)\n", cmd, get_cmd_name(cmd));
+  if (data_len > 0) {
+    printf("Data: ");
+    for (size_t i = 0; i < data_len; i++)
+      printf("%02X ", data[i]);
+    printf("(%zu bytes)\n", data_len);
+  } else {
+    printf("Data: (none)\n");
+  }
+
+  /* Pack command packet */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), cmd, data, data_len, false);
+  if (pkt_len < 0) {
+    warnx("failed to pack command");
+    return -1;
+  }
+
+  /* Display TX packet */
+  print_packet_analysis("TX", pkt, (size_t)pkt_len, false);
+
+  /* Send command */
+  if (ra_send(dev, pkt, pkt_len) < 0) {
+    warnx("failed to send command");
+    return -1;
+  }
+
+  /* Receive response with generous timeout */
+  n = ra_recv(dev, resp, sizeof(resp), 5000);
+  if (n < 0) {
+    warnx("failed to receive response");
+    return -1;
+  }
+  if (n == 0) {
+    printf("\nRX: (no response - timeout)\n");
+    printf("\nNote: Some commands (e.g., state transitions) cause the bootloader to hang.\n");
+    return 0;
+  }
+
+  /* Display RX packet */
+  print_packet_analysis("RX", resp, (size_t)n, true);
+
+  /* Check if response indicates error */
+  if (n >= 4 && (resp[3] & 0x80)) {
+    printf("\n*** Response indicates ERROR ***\n");
+    return -1;
+  }
+
+  printf("\n=== Command completed ===\n");
+  return 0;
+}

@@ -52,6 +52,7 @@ usage(int status) {
       "  key-verify <type>       Verify DLM key (secdbg|nonsecdbg|rma)\n"
       "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
       "  ukey-verify <idx>       Verify user key at index\n"
+      "  raw <cmd> [data...]     Send raw command (hex bytes) for protocol analysis\n"
       "\n"
       "Options:\n"
       "  -p, --port <dev>     Serial port (auto-detect if omitted)\n"
@@ -203,6 +204,7 @@ enum command {
   CMD_KEY_VERIFY,
   CMD_UKEY_SET,
   CMD_UKEY_VERIFY,
+  CMD_RAW,
 };
 
 /* DLM key types (KYTY) per R01AN5562 */
@@ -726,6 +728,11 @@ main(int argc, char *argv[]) {
     if (optind >= argc)
       errx(EXIT_FAILURE, "ukey-verify requires index argument");
     key_index = (uint8_t)strtoul(argv[optind], NULL, 10);
+  } else if (strcmp(command, "raw") == 0) {
+    cmd = CMD_RAW;
+    if (optind >= argc)
+      errx(EXIT_FAILURE, "raw command requires at least a command byte (hex)");
+    /* Arguments parsed later after device connection */
   } else {
     errx(EXIT_FAILURE, "unknown command: %s", command);
   }
@@ -951,6 +958,37 @@ main(int argc, char *argv[]) {
   case CMD_UKEY_VERIFY:
     ret = ra_ukey_verify(&dev, key_index, NULL);
     break;
+  case CMD_RAW: {
+    /* Parse command byte and optional data from remaining args */
+    uint8_t raw_cmd;
+    uint8_t raw_data[256];
+    size_t raw_len = 0;
+
+    /* Parse command byte */
+    char *endptr;
+    unsigned long val = strtoul(argv[optind], &endptr, 16);
+    if (*endptr != '\0' || val > 0xFF) {
+      warnx("invalid command byte: %s (use hex 0x00-0xFF)", argv[optind]);
+      ret = -1;
+      break;
+    }
+    raw_cmd = (uint8_t)val;
+
+    /* Parse optional data bytes */
+    for (int i = optind + 1; i < argc && raw_len < sizeof(raw_data); i++) {
+      val = strtoul(argv[i], &endptr, 16);
+      if (*endptr != '\0' || val > 0xFF) {
+        warnx("invalid data byte: %s (use hex 0x00-0xFF)", argv[i]);
+        ret = -1;
+        break;
+      }
+      raw_data[raw_len++] = (uint8_t)val;
+    }
+    if (ret < 0)
+      break;
+
+    ret = ra_raw_cmd(&dev, raw_cmd, raw_data, raw_len);
+  } break;
   default:
     break;
   }

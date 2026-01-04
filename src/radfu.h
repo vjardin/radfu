@@ -333,4 +333,22 @@ int ra_ukey_verify(ra_device_t *dev, uint8_t key_index, int *valid_out);
  */
 int ra_config_read(ra_device_t *dev);
 
+/*
+ * Send raw command for protocol analysis/exploration
+ * Sends a command with optional data and displays detailed TX/RX analysis.
+ * Useful for exploring undocumented commands or debugging protocol issues.
+ *
+ * cmd: command byte (0x00-0xFF)
+ * data: optional data bytes to send (may be NULL if data_len is 0)
+ * data_len: number of data bytes
+ *
+ * Output includes:
+ * - Raw hexdump of TX and RX packets
+ * - Field-by-field analysis (SOH/SOD, LNH/LNL, CMD/RES, DATA, SUM, ETX)
+ * - Known field interpretation (addresses, DLM states, error codes, etc.)
+ *
+ * Returns: 0 on success, -1 on error
+ */
+int ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len);
+
 #endif /* RADFU_H */

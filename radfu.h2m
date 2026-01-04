@@ -119,6 +119,43 @@ blocks are protected from programming/erasure. A value of 0 means protected,
 1 means unprotected. PBPS (Permanent Block Protection) cannot be reversed
 once set to 0.
 
+.TP
+.B raw <cmd> [data...]
+Send a raw bootloader command for protocol exploration and debugging. The command
+byte and optional data bytes are specified as hexadecimal values (with or without
+0x prefix). Displays detailed TX/RX packet analysis including field-by-field
+breakdown, checksum verification, and interpretation of known response fields.
+
+This command is useful for:
+.IP \(bu 4
+Exploring undocumented bootloader commands
+.IP \(bu
+Debugging protocol issues
+.IP \(bu
+Security research and reverse engineering
+.IP \(bu
+Testing device behavior with specific command sequences
+
+.SS Output Format
+The command displays:
+.IP \(bu 4
+Raw hexdump of transmitted and received packets
+.IP \(bu
+Field analysis: SOH/SOD, length, command/response code, data, checksum, ETX
+.IP \(bu
+Interpretation of known fields (addresses, DLM states, error codes, etc.)
+.IP \(bu
+Checksum validation status
+
+.SS Examples
+.nf
+radfu raw 0x3A                    # Signature request (device info)
+radfu raw 0x3B 0x00               # Area information for area 0
+radfu raw 0x2C                    # DLM state request
+radfu raw 0x15 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0xFF  # Read 256 bytes from 0x0
+radfu raw 0x99                    # Test unknown command (returns error)
+.fi
+
 [id authentication]
 Some RA devices have ID code protection enabled. To access protected devices,
 you must provide the correct 16-byte ID code using the \fB-i\fR option.
@@ -397,6 +434,8 @@ radfu boundary-set --cfs1 0 --cfs2 0 --dfs 0 --srs1 0 --srs2 0
 radfu boundary-set --file zephyr.rpd    # Load from .rpd file
 radfu -u -p /dev/ttyUSB0 info    # UART via USB-UART adapter
 radfu write -q firmware.bin      # Write without progress bar
+radfu raw 0x3A                   # Raw protocol exploration
+radfu raw 0x3B 0x00              # Area info with data byte
 .fi
 
 [progress display]

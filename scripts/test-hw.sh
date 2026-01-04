@@ -579,6 +579,74 @@ test_multi_file_write() {
     rm -f "${TEST_FILE}_1.bin" "${TEST_FILE}_2.bin"
 }
 
+test_raw() {
+    echo
+    log_info "=== Test: raw command (protocol exploration) ==="
+
+    # Test 1: Signature request (0x3A) - should return device info
+    local output
+    if output=$(run_radfu raw 0x3A 2>&1); then
+        if echo "$output" | grep -q "TX Packet" && \
+           echo "$output" | grep -q "RX Packet" && \
+           echo "$output" | grep -q "SIG (Signature request)"; then
+            log_ok "raw: signature request (0x3A)"
+            if [ "$VERBOSE" -eq 1 ]; then
+                echo "$output" | head -30
+            fi
+        else
+            log_fail "raw: signature request missing expected output"
+            return 1
+        fi
+    else
+        log_fail "raw: signature request command failed"
+        return 1
+    fi
+
+    # Test 2: Area info for area 0 (0x3B with data 0x00)
+    if output=$(run_radfu raw 0x3B 0x00 2>&1); then
+        if echo "$output" | grep -q "ARE (Area information)" && \
+           echo "$output" | grep -q "KOA:"; then
+            log_ok "raw: area info request (0x3B 0x00)"
+        else
+            log_fail "raw: area info missing expected output"
+            return 1
+        fi
+    else
+        log_fail "raw: area info command failed"
+        return 1
+    fi
+
+    # Test 3: DLM state request (0x2C)
+    if output=$(run_radfu raw 0x2C 2>&1); then
+        if echo "$output" | grep -q "DLM (DLM state request)" && \
+           echo "$output" | grep -q "DLM state:"; then
+            log_ok "raw: DLM state request (0x2C)"
+        else
+            log_fail "raw: DLM state missing expected output"
+            return 1
+        fi
+    else
+        log_fail "raw: DLM state command failed"
+        return 1
+    fi
+
+    # Test 4: Unknown command (0x99) - should return error 0xC0
+    if output=$(run_radfu raw 0x99 2>&1); then
+        # Command should "succeed" (sends and receives)
+        log_fail "raw: unknown command should have failed"
+        return 1
+    else
+        # Expected to fail with error response
+        if echo "$output" | grep -q "UNKNOWN" && \
+           echo "$output" | grep -q "ERROR"; then
+            log_ok "raw: unknown command (0x99) returns error as expected"
+        else
+            log_fail "raw: unknown command unexpected response"
+            return 1
+        fi
+    fi
+}
+
 test_input_formats() {
     echo
     log_info "=== Test: input formats (write from ihex/srec) ==="
@@ -722,6 +790,7 @@ Tests (default: all safe tests):
   area        Memory area selection (--area)
   reconnect   Multiple command sessions
   baudrate    Baud rate switching
+  raw         Raw command protocol analysis
   write       Write/erase/verify tests (requires -w)
   multiwrite  Multi-file write test (requires -w)
   informat    Input format tests (requires -w)
@@ -806,6 +875,7 @@ for test in $TESTS; do
         area)       test_area_selection ;;
         reconnect)  test_reconnection ;;
         baudrate)   test_baudrate ;;
+        raw)        test_raw ;;
         write)      test_write_data_flash; test_write_with_verify_flag ;;
         multiwrite) test_multi_file_write ;;
         informat)   test_input_formats ;;
@@ -827,6 +897,7 @@ for test in $TESTS; do
             test_area_selection
             test_reconnection
             test_baudrate
+            test_raw
             # Write tests (require -w flag)
             test_write_data_flash
             test_write_with_verify_flag
