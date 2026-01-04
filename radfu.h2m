@@ -72,9 +72,12 @@ the entire flash area.
 
 .TP
 .B write <file>
-Write a binary file to flash memory. The flash area is automatically erased
-before writing. Use \fB-a\fR to specify the start address. Use \fB-v\fR to
-verify the written data matches the file.
+Write a firmware file to flash memory. The flash area is automatically erased
+before writing. Supports binary, Intel HEX, and Motorola S-record formats.
+Use \fB-f\fR to specify the format (auto-detected by default from extension).
+Use \fB-a\fR to specify the start address (if omitted and the file contains
+address information, the embedded address is used). Use \fB-v\fR to verify
+the written data matches the file.
 
 .TP
 .B verify <file>
@@ -127,6 +130,43 @@ Supported rates depend on the MCU's SCI clock:
 9600 to 4000000 (including 2000000, 3000000, 3500000)
 
 USB communication is not affected by baud rate settings.
+
+[input formats]
+The \fBwrite\fR command supports multiple firmware file formats. Use \fB-f\fR
+to explicitly specify the format, or let radfu auto-detect from the file extension.
+
+.SS Supported Formats
+.TP
+.B binary (bin)
+Raw binary data. Extensions: .bin, .dat, or any unknown extension.
+No address information; use \fB-a\fR to specify the target address.
+
+.TP
+.B ihex (Intel HEX)
+Intel HEX format with embedded address records. Extensions: .hex, .ihex.
+Supports extended segment address (type 02) and extended linear address (type 04).
+
+.TP
+.B srec (Motorola S-record)
+Motorola S-record format with embedded addresses. Extensions: .srec, .s19, .s28, .s37, .mot.
+Supports S1 (16-bit), S2 (24-bit), and S3 (32-bit) address records.
+
+.SS Address Handling
+When using Intel HEX or S-record files that contain address information:
+.IP \(bu 4
+If \fB-a\fR is omitted, the address from the file is used automatically
+.IP \(bu
+If \fB-a\fR is specified, it overrides the embedded address
+.IP \(bu
+Binary files always require \fB-a\fR (defaults to 0x0)
+
+.SS Examples
+.nf
+radfu write firmware.hex              # Auto-detect Intel HEX, use embedded address
+radfu write -f srec app.bin           # Force S-record parsing on .bin file
+radfu write -a 0x10000 app.s19        # Override embedded address
+radfu write -f bin -a 0x0 data.dat    # Force binary, explicit address
+.fi
 
 [usb vs uart]
 RA microcontrollers support two communication interfaces for the ROM bootloader:

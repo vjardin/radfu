@@ -24,6 +24,7 @@ src = files(
   'src/radfu.c',
   'src/rapacker.c',
   'src/raosis.c',
+  'src/formats.c',
   'src/progress.c',
   'src/compat.c',
 )
@@ -101,6 +102,7 @@ if cmocka.found()
     'tests/test_radfu.c',
     'src/radfu.c',
     'src/rapacker.c',
+    'src/formats.c',
     'src/progress.c',
     platform_src,
     c_args : ['-DTESTING'],
@@ -122,4 +124,11 @@ if cmocka.found()
     platform_src,
     dependencies : [cmocka] + deps)
   test('raosis', test_raosis)
+
+  test_formats = executable('test_formats',
+    'tests/test_formats.c',
+    'src/formats.c',
+    'src/compat.c',
+    dependencies : cmocka)
+  test('formats', test_formats)
 endif

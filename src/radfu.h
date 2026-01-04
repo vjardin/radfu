@@ -9,6 +9,7 @@
 #ifndef RADFU_H
 #define RADFU_H
 
+#include "formats.h"
 #include "raconnect.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -73,9 +74,17 @@ int ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size);
 
 /*
  * Write file to flash memory
+ * format: input file format (FORMAT_AUTO to detect from extension)
+ * If file contains address info (Intel HEX, S-record) and start==0,
+ * the embedded address is used.
  * Returns: 0 on success, -1 on error
  */
-int ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool verify);
+int ra_write(ra_device_t *dev,
+    const char *file,
+    uint32_t start,
+    uint32_t size,
+    bool verify,
+    input_format_t format);
 
 /*
  * Calculate CRC of flash memory region

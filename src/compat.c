@@ -13,6 +13,7 @@
 
 #ifdef _WIN32
 #include <sys/stat.h>
+#include <direct.h>
 
 /*
  * mkstemp replacement for Windows
@@ -34,6 +35,31 @@ mkstemp(char *tmpl) {
   snprintf(suffix, 7, "%04x%02x", (unsigned)_getpid() & 0xFFFF, counter++ & 0xFF);
 
   return _open(tmpl, _O_CREAT | _O_EXCL | _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE);
+}
+
+/*
+ * mkdtemp replacement for Windows
+ * Template must end with XXXXXX which gets replaced with unique chars
+ * Returns template on success, NULL on error
+ */
+char *
+mkdtemp(char *tmpl) {
+  size_t len = strlen(tmpl);
+  if (len < 6)
+    return NULL;
+
+  char *suffix = tmpl + len - 6;
+  if (strcmp(suffix, "XXXXXX") != 0)
+    return NULL;
+
+  /* Generate unique suffix using pid and counter */
+  static int counter = 0;
+  snprintf(suffix, 7, "%04x%02x", (unsigned)_getpid() & 0xFFFF, counter++ & 0xFF);
+
+  if (_mkdir(tmpl) != 0)
+    return NULL;
+
+  return tmpl;
 }
 
 /*

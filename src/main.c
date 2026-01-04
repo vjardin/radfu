@@ -7,6 +7,7 @@
  */
 
 #include "compat.h"
+#include "formats.h"
 #include "raconnect.h"
 #include "radfu.h"
 #include "raosis.h"
@@ -14,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #ifndef VERSION
 #warning "VERSION not defined, using dummy-version"
@@ -58,6 +60,7 @@ usage(int status) {
       "  -i, --id <hex>       ID code for authentication (32 hex chars)\n"
       "  -e, --erase-all      Erase all areas using ALeRASE magic ID\n"
       "  -v, --verify         Verify after write\n"
+      "  -f, --input-format <fmt>  Input file format (auto/bin/ihex/srec)\n"
       "  -u, --uart           Use plain UART mode (P109/P110 pins)\n"
       "      --cfs1 <KB>      Code flash secure region size without NSC\n"
       "      --cfs2 <KB>      Code flash secure region size (total)\n"
@@ -265,22 +268,23 @@ parse_key_type(const char *str) {
 #define OPT_SRS2 260
 
 static const struct option longopts[] = {
-  { "port",      required_argument, NULL, 'p'      },
-  { "address",   required_argument, NULL, 'a'      },
-  { "size",      required_argument, NULL, 's'      },
-  { "baudrate",  required_argument, NULL, 'b'      },
-  { "id",        required_argument, NULL, 'i'      },
-  { "erase-all", no_argument,       NULL, 'e'      },
-  { "verify",    no_argument,       NULL, 'v'      },
-  { "uart",      no_argument,       NULL, 'u'      },
-  { "cfs1",      required_argument, NULL, OPT_CFS1 },
-  { "cfs2",      required_argument, NULL, OPT_CFS2 },
-  { "dfs",       required_argument, NULL, OPT_DFS  },
-  { "srs1",      required_argument, NULL, OPT_SRS1 },
-  { "srs2",      required_argument, NULL, OPT_SRS2 },
-  { "help",      no_argument,       NULL, 'h'      },
-  { "version",   no_argument,       NULL, 'V'      },
-  { NULL,        0,                 NULL, 0        }
+  { "port",         required_argument, NULL, 'p'      },
+  { "address",      required_argument, NULL, 'a'      },
+  { "size",         required_argument, NULL, 's'      },
+  { "baudrate",     required_argument, NULL, 'b'      },
+  { "id",           required_argument, NULL, 'i'      },
+  { "erase-all",    no_argument,       NULL, 'e'      },
+  { "verify",       no_argument,       NULL, 'v'      },
+  { "input-format", required_argument, NULL, 'f'      },
+  { "uart",         no_argument,       NULL, 'u'      },
+  { "cfs1",         required_argument, NULL, OPT_CFS1 },
+  { "cfs2",         required_argument, NULL, OPT_CFS2 },
+  { "dfs",          required_argument, NULL, OPT_DFS  },
+  { "srs1",         required_argument, NULL, OPT_SRS1 },
+  { "srs2",         required_argument, NULL, OPT_SRS2 },
+  { "help",         no_argument,       NULL, 'h'      },
+  { "version",      no_argument,       NULL, 'V'      },
+  { NULL,           0,                 NULL, 0        }
 };
 
 int
@@ -296,6 +300,7 @@ main(int argc, char *argv[]) {
   bool use_auth = false;
   bool erase_all = false;
   bool uart_mode = false;
+  input_format_t input_format = FORMAT_AUTO;
   uint8_t dest_dlm = 0;
   uint8_t param_value = 0;
   uint8_t key_index = 0;
@@ -307,7 +312,7 @@ main(int argc, char *argv[]) {
   enum command cmd = CMD_NONE;
   int opt;
 
-  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evuhV", longopts, NULL)) != -1) {
+  while ((opt = getopt_long(argc, argv, "p:a:s:b:i:evf:uhV", longopts, NULL)) != -1) {
     switch (opt) {
     case 'p':
       port = optarg;
@@ -329,6 +334,18 @@ main(int argc, char *argv[]) {
       break;
     case 'v':
       verify = true;
+      break;
+    case 'f':
+      if (strcasecmp(optarg, "auto") == 0)
+        input_format = FORMAT_AUTO;
+      else if (strcasecmp(optarg, "bin") == 0 || strcasecmp(optarg, "binary") == 0)
+        input_format = FORMAT_BIN;
+      else if (strcasecmp(optarg, "ihex") == 0 || strcasecmp(optarg, "hex") == 0)
+        input_format = FORMAT_IHEX;
+      else if (strcasecmp(optarg, "srec") == 0 || strcasecmp(optarg, "s19") == 0)
+        input_format = FORMAT_SREC;
+      else
+        errx(EXIT_FAILURE, "unknown input format: %s (use auto/bin/ihex/srec)", optarg);
       break;
     case 'u':
       uart_mode = true;
@@ -579,7 +596,7 @@ main(int argc, char *argv[]) {
     ret = ra_read(&dev, file, address, size);
     break;
   case CMD_WRITE:
-    ret = ra_write(&dev, file, address, size, verify);
+    ret = ra_write(&dev, file, address, size, verify, input_format);
     break;
   case CMD_VERIFY:
     ret = ra_verify(&dev, file, address, size);

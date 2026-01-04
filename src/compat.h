@@ -62,6 +62,9 @@ typedef SSIZE_T ssize_t;
 /* mkstemp - implemented in compat.c */
 int mkstemp(char *tmpl);
 
+/* mkdtemp - implemented in compat.c */
+char *mkdtemp(char *tmpl);
+
 /*
  * err.h compatibility - Windows doesn't have <err.h>
  */

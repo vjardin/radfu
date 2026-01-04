@@ -1021,7 +1021,12 @@ ra_blank_check(ra_device_t *dev, uint32_t start, uint32_t size) {
 }
 
 int
-ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool verify) {
+ra_write(ra_device_t *dev,
+    const char *file,
+    uint32_t start,
+    uint32_t size,
+    bool verify,
+    input_format_t format) {
   uint8_t pkt[MAX_PKT_LEN];
   uint8_t resp[16];
   uint8_t cmd_data[8];
@@ -1029,33 +1034,27 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   uint8_t chunk[CHUNK_SIZE];
   ssize_t pkt_len, n;
   uint32_t end;
-  int fd;
-  struct stat st;
+  parsed_file_t parsed;
 
-  fd = open(file, O_RDONLY);
-  if (fd < 0) {
-    warn("failed to open %s", file);
+  if (format_parse(file, format, &parsed) < 0)
     return -1;
-  }
 
-  if (fstat(fd, &st) < 0) {
-    warn("failed to stat %s", file);
-    close(fd);
-    return -1;
-  }
+  /* Use address from file if not specified on command line */
+  if (start == 0 && parsed.has_addr)
+    start = parsed.base_addr;
 
-  uint32_t file_size = (uint32_t)st.st_size;
+  uint32_t file_size = (uint32_t)parsed.size;
   if (size == 0)
     size = file_size;
 
   if (size > file_size) {
     warnx("write size > file size");
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   if (set_write_boundaries(dev, start, size, &end) < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
@@ -1068,25 +1067,25 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
 
   pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, cmd_data, 8, false);
   if (pkt_len < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   if (ra_send(dev, pkt, pkt_len) < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   n = ra_recv(dev, resp, sizeof(resp), 1000);
   if (n < 7) {
     warnx("short response for write init");
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
   size_t data_len;
   if (unpack_with_error(resp, n, resp_data, &data_len, "write init") < 0) {
-    close(fd);
+    free(parsed.data);
     return -1;
   }
 
@@ -1094,42 +1093,42 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   progress_init(&prog, write_size, "Writing");
 
   uint32_t total = 0;
+  uint32_t buf_offset = 0;
   while (total < write_size) {
     /* Calculate chunk size: min(CHUNK_SIZE, remaining) per spec 6.19 */
     uint32_t remaining = write_size - total;
     uint32_t chunk_size = remaining < CHUNK_SIZE ? remaining : CHUNK_SIZE;
 
-    ssize_t bytes_read = read(fd, chunk, chunk_size);
-    if (bytes_read < 0) {
-      warn("read from file failed");
-      close(fd);
-      return -1;
-    }
-
-    /* Pad with zeros if file is smaller than write range */
-    if (bytes_read < (ssize_t)chunk_size)
-      memset(chunk + bytes_read, 0, chunk_size - bytes_read);
+    /* Copy from parsed buffer, pad with zeros if smaller than write range */
+    uint32_t copy_size = (buf_offset + chunk_size <= file_size)
+                             ? chunk_size
+                             : (file_size > buf_offset ? file_size - buf_offset : 0);
+    if (copy_size > 0)
+      memcpy(chunk, parsed.data + buf_offset, copy_size);
+    if (copy_size < chunk_size)
+      memset(chunk + copy_size, 0, chunk_size - copy_size);
+    buf_offset += copy_size;
 
     pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, chunk, chunk_size, true);
     if (pkt_len < 0) {
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
     if (ra_send(dev, pkt, pkt_len) < 0) {
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
     n = ra_recv(dev, resp, sizeof(resp), 2000);
     if (n < 7) {
       warnx("short response during write");
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
     if (unpack_with_error(resp, n, resp_data, &data_len, "write") < 0) {
-      close(fd);
+      free(parsed.data);
       return -1;
     }
 
@@ -1138,7 +1137,6 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
   }
 
   progress_finish(&prog);
-  close(fd);
 
   if (verify) {
     const char *tmpdir = get_temp_dir();
@@ -1147,51 +1145,46 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
     int tmpfd = mkstemp(tmpfile);
     if (tmpfd < 0) {
       warn("failed to create temp file for verify");
+      free(parsed.data);
       return -1;
     }
     close(tmpfd);
 
     if (ra_read(dev, tmpfile, start, size) < 0) {
       unlink(tmpfile);
+      free(parsed.data);
       return -1;
     }
 
-    /* Compare files */
-    fd = open(file, O_RDONLY);
+    /* Compare parsed data with read-back */
     tmpfd = open(tmpfile, O_RDONLY);
-    if (fd < 0 || tmpfd < 0) {
-      if (fd >= 0)
-        close(fd);
-      if (tmpfd >= 0)
-        close(tmpfd);
+    if (tmpfd < 0) {
       unlink(tmpfile);
+      free(parsed.data);
       return -1;
     }
 
-    uint8_t buf1[CHUNK_SIZE], buf2[CHUNK_SIZE];
+    uint8_t buf[CHUNK_SIZE];
     bool match = true;
     size_t compared = 0;
 
     while (compared < file_size) {
-      ssize_t n1 = read(fd, buf1, CHUNK_SIZE);
-      ssize_t n2 = read(tmpfd, buf2, CHUNK_SIZE);
-
-      if (n1 < 0 || n2 < 0) {
+      ssize_t n_read = read(tmpfd, buf, CHUNK_SIZE);
+      if (n_read < 0) {
         match = false;
         break;
       }
-      if (n1 == 0)
+      if (n_read == 0)
         break;
 
-      size_t cmp_len = (size_t)n1;
-      if (memcmp(buf1, buf2, cmp_len) != 0) {
+      size_t cmp_len = (size_t)n_read;
+      if (memcmp(parsed.data + compared, buf, cmp_len) != 0) {
         match = false;
         break;
       }
       compared += cmp_len;
     }
 
-    close(fd);
     close(tmpfd);
     unlink(tmpfile);
 
@@ -1201,6 +1194,7 @@ ra_write(ra_device_t *dev, const char *file, uint32_t start, uint32_t size, bool
       printf("Verify failed\n");
   }
 
+  free(parsed.data);
   return 0;
 }
 
