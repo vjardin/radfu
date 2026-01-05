@@ -4530,3 +4530,103 @@ ra_fm2app_get(ra_device_t *dev) {
 
   return 0;
 }
+
+/*
+ * FM2APP boot preference partition writer
+ * Writes a field in the boot_pref_partition structure in data flash.
+ *
+ * Data flash can only clear bits (1->0) without erase.
+ * If the new value requires setting bits (0->1), the 64-byte block
+ * is erased first, then all 16 bytes are rewritten.
+ */
+int
+ra_fm2app_set(ra_device_t *dev, fm2app_field_t field, uint8_t value) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t data[16];
+  uint8_t cmd_data[8];
+  ssize_t pkt_len, n;
+
+  if (field > FM2APP_TEST_RESULT) {
+    warnx("invalid field index %d", field);
+    return -1;
+  }
+
+  /* Boot preference partition is at 0x08000000 (data flash start) */
+  uint32_t base = 0x08000000;
+  uint32_t offset = (uint32_t)(field * 4);
+
+  /* Ensure area info is populated */
+  if (ra_get_area_info(dev, false) < 0)
+    return -1;
+
+  /* Read current 16 bytes */
+  uint32_to_be(base, &cmd_data[0]);
+  uint32_to_be(base + 15, &cmd_data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, cmd_data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 2000);
+  if (n < 0 || unpack_with_error(resp, n, data, NULL, "fm2app-set read") < 0)
+    return -1;
+
+  uint8_t old_value = data[offset];
+
+  /* Check if we need to erase (any bit needs to go from 0 to 1) */
+  bool need_erase = (value & ~old_value) != 0;
+
+  if (need_erase) {
+    /* Erase the 64-byte block */
+    printf("Erasing data flash block at 0x%08X...\n", base);
+    if (ra_erase(dev, base, 64) < 0)
+      return -1;
+
+    /* Set all bytes to 0xFF (erased state for writes) */
+    memset(data, 0xFF, 16);
+  }
+
+  /* Update the field */
+  data[offset] = value;
+
+  /* Write back - need to write all 16 bytes if we erased, or just 4 if not */
+  uint32_t write_start = need_erase ? base : (base + offset);
+  uint32_t write_size = need_erase ? 16 : 4;
+  uint8_t *write_data = need_erase ? data : &data[offset];
+
+  printf("Writing 0x%02X to offset %u (address 0x%08X)...\n", value, offset, base + offset);
+
+  /* Send write command with start/end addresses */
+  uint32_to_be(write_start, &cmd_data[0]);
+  uint32_to_be(write_start + write_size - 1, &cmd_data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, cmd_data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 1000);
+  if (n < 0 || unpack_with_error(resp, n, NULL, NULL, "fm2app-set write init") < 0)
+    return -1;
+
+  /* Send data packet */
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), WRI_CMD, write_data, write_size, true);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 2000);
+  if (n < 0 || unpack_with_error(resp, n, NULL, NULL, "fm2app-set write") < 0)
+    return -1;
+
+  printf("Write complete\n");
+  return 0;
+}

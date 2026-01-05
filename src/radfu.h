@@ -377,6 +377,14 @@ int ra_restore(ra_device_t *dev, const char *file, input_format_t format, bool v
  */
 int ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len);
 
+/* FM2APP boot preference partition fields */
+typedef enum {
+  FM2APP_BOOT_PREF = 0,   /* offset 0: boot preference */
+  FM2APP_RETRY_COUNT = 1, /* offset 4: retry counter */
+  FM2APP_TEST_CMD = 2,    /* offset 8: test command */
+  FM2APP_TEST_RESULT = 3, /* offset 12: test result */
+} fm2app_field_t;
+
 /*
  * Read and display FM2APP boot preference partition
  * Reads the boot_pref_partition structure from data flash (0x08000000)
@@ -384,5 +392,12 @@ int ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_l
  * Returns: 0 on success, -1 on error
  */
 int ra_fm2app_get(ra_device_t *dev);
+
+/*
+ * Write FM2APP boot preference partition field
+ * Handles erase automatically if needed (when setting bits from 0 to 1).
+ * Returns: 0 on success, -1 on error
+ */
+int ra_fm2app_set(ra_device_t *dev, fm2app_field_t field, uint8_t value);
 
 #endif /* RADFU_H */

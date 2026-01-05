@@ -52,6 +52,7 @@ usage(int status) {
       "  backup <file>  Backup all flash to file (requires .hex or .srec)\n"
       "  restore <file> Restore flash from backup (full erase then write)\n"
       "  fm2app-get     Read FM2APP boot preference partition from data flash\n"
+      "  fm2app-set <field> <value>  Write FM2APP field (boot_pref, test_cmd)\n"
       "  key-set <type> <file>   Inject wrapped DLM key (secdbg|nonsecdbg|rma)\n"
       "  key-verify <type>       Verify DLM key (secdbg|nonsecdbg|rma)\n"
       "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
@@ -213,6 +214,44 @@ enum command {
   CMD_BACKUP,
   CMD_RESTORE,
   CMD_FM2APP_GET,
+  CMD_FM2APP_SET,
+};
+
+/* FM2APP field name tokens */
+static const struct {
+  const char *name;
+  fm2app_field_t field;
+} fm2app_field_tokens[] = {
+  { "boot_pref",   FM2APP_BOOT_PREF   },
+  { "retry_count", FM2APP_RETRY_COUNT },
+  { "test_cmd",    FM2APP_TEST_CMD    },
+  { "test_result", FM2APP_TEST_RESULT },
+  { NULL,          0                  },
+};
+
+/* FM2APP boot_pref value tokens */
+static const struct {
+  const char *name;
+  uint8_t value;
+} fm2app_boot_pref_tokens[] = {
+  { "main",     0x00 },
+  { "bank1",    0x00 },
+  { "fallback", 0x01 },
+  { "bank0",    0x01 },
+  { "default",  0xFF },
+  { NULL,       0    },
+};
+
+/* FM2APP test_cmd value tokens */
+static const struct {
+  const char *name;
+  uint8_t value;
+} fm2app_test_cmd_tokens[] = {
+  { "none",     0xFF },
+  { "switch",   0x01 },
+  { "selftest", 0x02 },
+  { "security", 0x03 },
+  { NULL,       0    },
 };
 
 /* DLM key types (KYTY) per R01AN5562 */
@@ -750,6 +789,10 @@ main(int argc, char *argv[]) {
     file = argv[optind];
   } else if (strcmp(command, "fm2app-get") == 0) {
     cmd = CMD_FM2APP_GET;
+  } else if (strcmp(command, "fm2app-set") == 0) {
+    cmd = CMD_FM2APP_SET;
+    if (optind + 1 >= argc)
+      errx(EXIT_FAILURE, "fm2app-set requires <field> <value>");
   } else if (strcmp(command, "raw") == 0) {
     cmd = CMD_RAW;
     if (optind >= argc)
@@ -1007,6 +1050,52 @@ main(int argc, char *argv[]) {
   case CMD_FM2APP_GET:
     ret = ra_fm2app_get(&dev);
     break;
+  case CMD_FM2APP_SET: {
+    const char *field_name = argv[optind];
+    const char *value_str = argv[optind + 1];
+    fm2app_field_t field = (fm2app_field_t)-1;
+    uint8_t value = 0;
+    bool found;
+
+    /* Parse field name using token table */
+    found = false;
+    for (int i = 0; fm2app_field_tokens[i].name != NULL; i++) {
+      if (strcmp(field_name, fm2app_field_tokens[i].name) == 0) {
+        field = fm2app_field_tokens[i].field;
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+      errx(EXIT_FAILURE,
+          "unknown field: %s (use boot_pref, retry_count, test_cmd, test_result)",
+          field_name);
+
+    /* Parse value using token tables or hex */
+    found = false;
+    if (field == FM2APP_BOOT_PREF) {
+      for (int i = 0; fm2app_boot_pref_tokens[i].name != NULL; i++) {
+        if (strcmp(value_str, fm2app_boot_pref_tokens[i].name) == 0) {
+          value = fm2app_boot_pref_tokens[i].value;
+          found = true;
+          break;
+        }
+      }
+    } else if (field == FM2APP_TEST_CMD) {
+      for (int i = 0; fm2app_test_cmd_tokens[i].name != NULL; i++) {
+        if (strcmp(value_str, fm2app_test_cmd_tokens[i].name) == 0) {
+          value = fm2app_test_cmd_tokens[i].value;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found)
+      value = (uint8_t)strtoul(value_str, NULL, 0);
+
+    ret = ra_fm2app_set(&dev, field, value);
+    break;
+  }
   case CMD_RAW: {
     /* Parse command byte and optional data from remaining args */
     uint8_t raw_cmd;
