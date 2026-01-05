@@ -2746,6 +2746,169 @@ status_scan_flash_usage(ra_device_t *dev, uint32_t sad, uint32_t ead, uint32_t r
 }
 
 /*
+ * MCUboot image header structure
+ * See: https://docs.mcuboot.com/design.html#image-format
+ */
+#define MCUBOOT_IMAGE_MAGIC 0x96f3b83d
+#define MCUBOOT_HEADER_SIZE 32
+
+typedef struct {
+  uint32_t ih_magic;
+  uint32_t ih_load_addr;
+  uint16_t ih_hdr_size;
+  uint16_t ih_protect_tlv_size;
+  uint32_t ih_img_size;
+  uint32_t ih_flags;
+  uint8_t iv_major;
+  uint8_t iv_minor;
+  uint16_t iv_revision;
+  uint32_t iv_build_num;
+} mcuboot_image_header_t;
+
+/* Detected MCUboot partition info */
+typedef struct {
+  uint32_t start;
+  uint32_t end;
+  bool has_image;
+  uint8_t ver_major;
+  uint8_t ver_minor;
+  uint16_t ver_rev;
+  uint32_t ver_build;
+  uint32_t img_size;
+} mcuboot_partition_t;
+
+#define MAX_MCUBOOT_PARTITIONS 8
+
+/*
+ * Read a small chunk of flash (for header detection)
+ * Returns 0 on success, -1 on error
+ */
+static int
+status_read_flash_chunk(ra_device_t *dev, uint32_t addr, uint8_t *buf, size_t len) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[CHUNK_SIZE + 6];
+  uint8_t data[8];
+  ssize_t pkt_len, n;
+
+  if (len > CHUNK_SIZE)
+    len = CHUNK_SIZE;
+
+  uint32_to_be(addr, &data[0]);
+  uint32_to_be(addr + len - 1, &data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, len + 6, 2000);
+  if (n < 7)
+    return -1;
+
+  size_t chunk_len;
+  uint8_t cmd;
+  if (ra_unpack_pkt(resp, n, buf, &chunk_len, &cmd) < 0)
+    return -1;
+  if (cmd & STATUS_ERR)
+    return -1;
+
+  return 0;
+}
+
+/*
+ * Check if address contains MCUboot image header
+ * Returns 1 if valid MCUboot header found, 0 otherwise
+ */
+static int
+status_check_mcuboot_header(ra_device_t *dev, uint32_t addr, mcuboot_partition_t *part) {
+  uint8_t buf[MCUBOOT_HEADER_SIZE];
+
+  if (status_read_flash_chunk(dev, addr, buf, MCUBOOT_HEADER_SIZE) < 0)
+    return 0;
+
+  /* MCUboot uses little-endian format */
+  uint32_t magic = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+
+  if (magic != MCUBOOT_IMAGE_MAGIC)
+    return 0;
+
+  /* Parse header fields (little-endian) */
+  part->start = addr;
+  part->has_image = true;
+  part->img_size = buf[12] | (buf[13] << 8) | (buf[14] << 16) | (buf[15] << 24);
+  part->ver_major = buf[20];
+  part->ver_minor = buf[21];
+  part->ver_rev = buf[22] | (buf[23] << 8);
+  part->ver_build = buf[24] | (buf[25] << 8) | (buf[26] << 16) | (buf[27] << 24);
+
+  /* Calculate end address: header + protected TLV + image + TLV area */
+  uint16_t hdr_size = buf[8] | (buf[9] << 8);
+  part->end = addr + hdr_size + part->img_size;
+
+  return 1;
+}
+
+/*
+ * Scan flash region to find last non-0xFF byte (actual used size)
+ * Returns the used size in bytes, or 0 if region is empty
+ */
+static uint32_t
+status_scan_region_usage(ra_device_t *dev, uint32_t start, uint32_t end) {
+  uint8_t buf[CHUNK_SIZE];
+  uint32_t last_used = 0;
+  uint32_t size = end - start + 1;
+  uint32_t nr_chunks = (size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+  for (uint32_t i = 0; i < nr_chunks; i++) {
+    uint32_t chunk_start = start + i * CHUNK_SIZE;
+    uint32_t remaining = end - chunk_start + 1;
+    uint32_t chunk_size = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+
+    if (status_read_flash_chunk(dev, chunk_start, buf, chunk_size) < 0)
+      continue;
+
+    /* Find last non-0xFF byte in this chunk */
+    for (uint32_t j = chunk_size; j > 0; j--) {
+      if (buf[j - 1] != 0xFF) {
+        uint32_t offset = chunk_start - start + j;
+        if (offset > last_used)
+          last_used = offset;
+        break;
+      }
+    }
+  }
+
+  return last_used;
+}
+
+/*
+ * Scan code flash for MCUboot images
+ * Scans at 4KB boundaries (common minimum slot alignment)
+ * Returns number of images found
+ */
+static int
+status_scan_mcuboot_images(
+    ra_device_t *dev, uint32_t sad, uint32_t ead, mcuboot_partition_t *parts, int max_parts) {
+  int count = 0;
+  uint32_t scan_step = 4096; /* 4KB alignment */
+
+  fprintf(stderr, "Scanning for MCUboot images...\n");
+
+  for (uint32_t addr = sad; addr < ead && count < max_parts; addr += scan_step) {
+    if (status_check_mcuboot_header(dev, addr, &parts[count])) {
+      count++;
+      /* Skip past this image to avoid finding overlapping headers */
+      if (parts[count - 1].end > addr)
+        addr = ((parts[count - 1].end + scan_step - 1) / scan_step) * scan_step - scan_step;
+    }
+  }
+
+  return count;
+}
+
+/*
  * Get CPU core name from product series
  */
 static const char *
@@ -3216,6 +3379,34 @@ ra_status(ra_device_t *dev) {
    * reads undefined values (not 0xFF) per Renesas RA hardware spec.
    * The bootloader protocol does not expose a reliable blank-check method. */
 
+  /* Scan for MCUboot images in code flash */
+  mcuboot_partition_t mcuboot_parts[MAX_MCUBOOT_PARTITIONS];
+  int mcuboot_count = 0;
+  uint32_t bl_used = 0, storage_used = 0;
+  uint32_t storage_start = 0, storage_size = 0;
+
+  if (code_size > 0)
+    mcuboot_count =
+        status_scan_mcuboot_images(dev, code_sad, code_ead, mcuboot_parts, MAX_MCUBOOT_PARTITIONS);
+
+  /* Scan bootloader and storage regions if MCUboot images found */
+  if (mcuboot_count > 0) {
+    /* Scan bootloader region */
+    if (mcuboot_parts[0].start > code_sad) {
+      fprintf(stderr, "Scanning bootloader region...\n");
+      bl_used = status_scan_region_usage(dev, code_sad, mcuboot_parts[0].start - 1);
+    }
+
+    /* Scan storage region (last 48KB) */
+    uint32_t storage_reserve = 48 * 1024;
+    storage_start = code_ead - storage_reserve + 1;
+    if (storage_start > mcuboot_parts[mcuboot_count - 1].start) {
+      storage_size = code_ead - storage_start + 1;
+      fprintf(stderr, "Scanning storage region...\n");
+      storage_used = status_scan_region_usage(dev, storage_start, code_ead);
+    }
+  }
+
   /* Print status display */
   printf("\n");
   status_print_hline(BOX_TL, BOX_H, BOX_TR, STATUS_WIDTH);
@@ -3326,6 +3517,97 @@ ra_status(ra_device_t *dev) {
   snprintf(content, sizeof(content), " %s  %3d%% used", bar_buf, pct);
   status_format_inner(line, sizeof(line), content, INNER_WIDTH);
   status_print_line(line, STATUS_WIDTH);
+
+  /* MCUboot partitions display */
+  if (mcuboot_count > 0) {
+    status_format_inner(line, sizeof(line), "", INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+    status_format_inner(line, sizeof(line), " MCUboot Partitions:", INNER_WIDTH);
+    status_print_line(line, STATUS_WIDTH);
+
+    /* Display bootloader region (before first MCUboot image) */
+    if (mcuboot_parts[0].start > code_sad) {
+      uint32_t bl_region_size = mcuboot_parts[0].start - code_sad;
+      int bl_pct = (bl_region_size > 0) ? (int)((uint64_t)bl_used * 100 / bl_region_size) : 0;
+      char used_str[16];
+      format_size(bl_region_size, size_str, sizeof(size_str));
+      format_size(bl_used, used_str, sizeof(used_str));
+      snprintf(content,
+          sizeof(content),
+          "   0x%08X  %6s  bootloader (%s used, %d%%)",
+          code_sad,
+          size_str,
+          used_str,
+          bl_pct);
+      status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+      status_print_line(line, STATUS_WIDTH);
+    }
+
+    /* Display detected MCUboot images */
+    for (int i = 0; i < mcuboot_count; i++) {
+      /* Determine slot boundaries based on next image or flash layout */
+      uint32_t slot_start = mcuboot_parts[i].start;
+      uint32_t slot_end;
+      if (i + 1 < mcuboot_count) {
+        slot_end = mcuboot_parts[i + 1].start - 1;
+      } else {
+        /* Last image: estimate slot end based on typical storage reservation
+         * Common layouts reserve 48-64KB at end for storage/settings */
+        uint32_t storage_reserve = 48 * 1024;
+        if (code_ead > storage_reserve + mcuboot_parts[i].start)
+          slot_end = code_ead - storage_reserve;
+        else
+          slot_end = code_ead;
+      }
+
+      uint32_t slot_size = slot_end - slot_start + 1;
+      uint32_t img_used = mcuboot_parts[i].img_size;
+      int slot_pct = (slot_size > 0) ? (int)((uint64_t)img_used * 100 / slot_size) : 0;
+
+      /* Determine slot label based on position */
+      const char *slot_label;
+      if (i == 0 && mcuboot_count >= 2)
+        slot_label = "Bank0";
+      else if (i == 1)
+        slot_label = "Bank1";
+      else
+        slot_label = "Image";
+
+      char used_str[16];
+      format_size(slot_size, size_str, sizeof(size_str));
+      format_size(img_used, used_str, sizeof(used_str));
+      snprintf(content,
+          sizeof(content),
+          "   0x%08X  %6s  v%u.%u.%u [%s] (%s used, %d%%)",
+          mcuboot_parts[i].start,
+          size_str,
+          mcuboot_parts[i].ver_major,
+          mcuboot_parts[i].ver_minor,
+          mcuboot_parts[i].ver_rev,
+          slot_label,
+          used_str,
+          slot_pct);
+      status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+      status_print_line(line, STATUS_WIDTH);
+    }
+
+    /* Display storage region at end of flash */
+    if (storage_size > 0) {
+      int rem_pct = (storage_size > 0) ? (int)((uint64_t)storage_used * 100 / storage_size) : 0;
+      char used_str[16];
+      format_size(storage_size, size_str, sizeof(size_str));
+      format_size(storage_used, used_str, sizeof(used_str));
+      snprintf(content,
+          sizeof(content),
+          "   0x%08X  %6s  storage (%s used, %d%%)",
+          storage_start,
+          size_str,
+          used_str,
+          rem_pct);
+      status_format_inner(line, sizeof(line), content, INNER_WIDTH);
+      status_print_line(line, STATUS_WIDTH);
+    }
+  }
 
   /* Data Flash */
   if (data_size > 0) {
