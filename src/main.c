@@ -51,6 +51,7 @@ usage(int status) {
       "  config-read    Read and display config area contents\n"
       "  backup <file>  Backup all flash to file (requires .hex or .srec)\n"
       "  restore <file> Restore flash from backup (full erase then write)\n"
+      "  fm2app-get     Read FM2APP boot preference partition from data flash\n"
       "  key-set <type> <file>   Inject wrapped DLM key (secdbg|nonsecdbg|rma)\n"
       "  key-verify <type>       Verify DLM key (secdbg|nonsecdbg|rma)\n"
       "  ukey-set <idx> <file>   Inject user wrapped key from file at index\n"
@@ -211,6 +212,7 @@ enum command {
   CMD_RAW,
   CMD_BACKUP,
   CMD_RESTORE,
+  CMD_FM2APP_GET,
 };
 
 /* DLM key types (KYTY) per R01AN5562 */
@@ -746,6 +748,8 @@ main(int argc, char *argv[]) {
     if (optind >= argc)
       errx(EXIT_FAILURE, "restore command requires a file argument");
     file = argv[optind];
+  } else if (strcmp(command, "fm2app-get") == 0) {
+    cmd = CMD_FM2APP_GET;
   } else if (strcmp(command, "raw") == 0) {
     cmd = CMD_RAW;
     if (optind >= argc)
@@ -999,6 +1003,9 @@ main(int argc, char *argv[]) {
     break;
   case CMD_RESTORE:
     ret = ra_restore(&dev, file, input_format, verify);
+    break;
+  case CMD_FM2APP_GET:
+    ret = ra_fm2app_get(&dev);
     break;
   case CMD_RAW: {
     /* Parse command byte and optional data from remaining args */

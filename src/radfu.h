@@ -377,4 +377,12 @@ int ra_restore(ra_device_t *dev, const char *file, input_format_t format, bool v
  */
 int ra_raw_cmd(ra_device_t *dev, uint8_t cmd, const uint8_t *data, size_t data_len);
 
+/*
+ * Read and display FM2APP boot preference partition
+ * Reads the boot_pref_partition structure from data flash (0x08000000)
+ * and displays the 4 fields: boot_pref, retry_count, test_cmd, test_result.
+ * Returns: 0 on success, -1 on error
+ */
+int ra_fm2app_get(ra_device_t *dev);
+
 #endif /* RADFU_H */

@@ -4414,3 +4414,119 @@ ra_restore(ra_device_t *dev, const char *file, input_format_t format, bool verif
   fprintf(stderr, "Restore complete\n");
   return 0;
 }
+
+/*
+ * FM2APP boot preference partition reader
+ * Reads and displays the boot_pref_partition structure from data flash.
+ *
+ * Layout at 0x08000000:
+ *   offset 0:  boot_pref    (4 bytes) - 0x00=Bank1, 0x01=Bank0, 0xFF=default
+ *   offset 4:  retry_count  (4 bytes) - bit-clearing: 0xFF=0, 0xFE=1, 0xFC=2, 0xF8=3
+ *   offset 8:  test_cmd     (4 bytes) - 0xFF=none, 0x01=switch, 0x02=selftest, 0x03=security
+ *   offset 12: test_result  (4 bytes) - 0xB0=Bank0 OK, 0xB1=Bank1 OK, 0xAA/0x55=sec tests
+ */
+int
+ra_fm2app_get(ra_device_t *dev) {
+  uint8_t pkt[MAX_PKT_LEN];
+  uint8_t resp[32];
+  uint8_t data[16];
+  uint8_t cmd_data[8];
+  ssize_t pkt_len, n;
+
+  /* Boot preference partition is at 0x08000000 (data flash start) */
+  uint32_t start = 0x08000000;
+  uint32_t end = start + 15; /* Read 16 bytes */
+
+  /* Ensure area info is populated */
+  if (ra_get_area_info(dev, false) < 0)
+    return -1;
+
+  /* Build read command */
+  uint32_to_be(start, &cmd_data[0]);
+  uint32_to_be(end, &cmd_data[4]);
+
+  pkt_len = ra_pack_pkt(pkt, sizeof(pkt), REA_CMD, cmd_data, 8, false);
+  if (pkt_len < 0)
+    return -1;
+
+  if (ra_send(dev, pkt, pkt_len) < 0)
+    return -1;
+
+  n = ra_recv(dev, resp, sizeof(resp), 2000);
+  if (n < 0 || unpack_with_error(resp, n, data, NULL, "fm2app-get read") < 0)
+    return -1;
+
+  /* Parse the 4 fields (each is 4 bytes, but only first byte matters) */
+  uint8_t boot_pref = data[0];
+  uint8_t retry_count_raw = data[4];
+  uint8_t test_cmd = data[8];
+  uint8_t test_result = data[12];
+
+  /* Convert retry_count from bit-clearing scheme */
+  int retry_count = 0;
+  uint8_t mask = retry_count_raw;
+  while ((mask & 0x01) == 0 && retry_count < 8) {
+    retry_count++;
+    mask >>= 1;
+  }
+
+  /* Print header */
+  printf("\nFM2APP Boot Preference Partition @ 0x%08X\n\n", start);
+
+  /* Raw hex dump */
+  printf("Raw data: ");
+  for (int i = 0; i < 16; i++)
+    printf("%02X ", data[i]);
+  printf("\n\n");
+
+  /* Boot preference */
+  printf("boot_pref (offset 0)    : 0x%02X", boot_pref);
+  if (boot_pref == 0x00)
+    printf(" -> Force Bank1/main (slot0 @ 0x24000)");
+  else if (boot_pref == 0x01)
+    printf(" -> Force Bank0/fallback (slot1 @ 0x10000)");
+  else if (boot_pref == 0xFF)
+    printf(" -> Default (version-based)");
+  else
+    printf(" -> Unknown");
+  printf("\n");
+
+  /* Retry count */
+  printf("retry_count (offset 4)  : 0x%02X", retry_count_raw);
+  printf(" -> %d retries", retry_count);
+  if (retry_count >= 3)
+    printf(" (MAX - will fallback)");
+  printf("\n");
+
+  /* Test command */
+  printf("test_cmd (offset 8)     : 0x%02X", test_cmd);
+  if (test_cmd == 0xFF)
+    printf(" -> None");
+  else if (test_cmd == 0x01)
+    printf(" -> Switch bank");
+  else if (test_cmd == 0x02)
+    printf(" -> Self-test");
+  else if (test_cmd == 0x03)
+    printf(" -> Security test");
+  else
+    printf(" -> Unknown");
+  printf("\n");
+
+  /* Test result */
+  printf("test_result (offset 12) : 0x%02X", test_result);
+  if (test_result == 0xB0)
+    printf(" -> Bank0/fallback OK");
+  else if (test_result == 0xB1)
+    printf(" -> Bank1/main OK");
+  else if (test_result == 0xAA)
+    printf(" -> Security tests PASSED");
+  else if (test_result == 0x55)
+    printf(" -> Security tests FAILED");
+  else if (test_result == 0xFF)
+    printf(" -> No result");
+  else
+    printf(" -> Unknown (0x%02X)", test_result);
+  printf("\n");
+
+  return 0;
+}
